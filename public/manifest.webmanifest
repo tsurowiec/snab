@@ -2,7 +2,7 @@
   "name": "snab — Suro needs a budget",
   "short_name": "snab",
   "description": "Personal YNAB budgeting tools",
-  "start_url": "/conversions",
+  "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
   "theme_color": "#2563eb",

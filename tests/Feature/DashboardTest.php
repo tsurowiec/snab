@@ -29,7 +29,7 @@ test('registration is disabled', function () {
 test('the PWA manifest and icon are served', function () {
     expect(file_exists(public_path('manifest.webmanifest')))->toBeTrue()
         ->and(json_decode(file_get_contents(public_path('manifest.webmanifest')), true))
-        ->toMatchArray(['short_name' => 'snab', 'start_url' => '/conversions', 'display' => 'standalone'])
+        ->toMatchArray(['short_name' => 'snab', 'start_url' => '/dashboard', 'display' => 'standalone'])
         ->and(file_exists(public_path('icon.svg')))->toBeTrue();
 
     $this->actingAs(User::factory()->create())

@@ -104,7 +104,7 @@ app/
     Anthropic/UsageRecorder.php    stores an llm_usages row per Claude response (prices fallback iterations per model)
   Console/Commands/CreateUser.php  snab:user
 resources/views/pages/
-  tools/conversions/⚡index.blade.php   account list (route conversions.index, PWA start_url)
+  tools/conversions/⚡index.blade.php   account list (route conversions.index)
   tools/conversions/⚡show.blade.php    transaction picker + confirm modal (route conversions.show)
   tools/card-import/⚡index.blade.php   upload → review → save, plus the imported list
   settings/⚡ynab.blade.php              Settings → YNAB
