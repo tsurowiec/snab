@@ -218,3 +218,15 @@ it('asks to set up YNAB when transactions are not sent', function () {
         ->assertSee('Not sent to YNAB yet')
         ->assertSee('not sent');
 });
+
+it('marks rows whose main amount is not PLN', function () {
+    fakeExtractor([new ExtractedTransaction(CarbonImmutable::parse('2026-11-15 14:32'), 'Shop', -10000, 'EUR')]);
+
+    $page = Livewire::actingAs($this->user)
+        ->test('pages::tools.card-import.index')
+        ->set('screenshots', [UploadedFile::fake()->image('revolut.png')])
+        ->call('extract')
+        ->assertSee('not PLN');
+
+    expect($page->get('rows')[0]['selected'])->toBeFalse();
+});

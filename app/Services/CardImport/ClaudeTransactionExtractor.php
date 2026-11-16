@@ -27,8 +27,10 @@ class ClaudeTransactionExtractor implements TransactionExtractor
 
         Layout: the list is grouped by day. Each group starts with a date header ("Today", "Yesterday", or a date such as
         "12 November" / "Nov 12", sometimes with a year). Under each header are rows; each row shows the merchant name,
-        the time (HH:MM) and the amount. Some rows also show an amount in another currency, a "Pending", "Declined" or
-        "Reverted" label.
+        the time (HH:MM) and the amount. Some rows also show a "Pending", "Declined" or "Reverted" label.
+
+        The card account is always in PLN: the main amount of every row is in PLN (zł). For purchases made in another
+        currency the row additionally shows the original amount in that currency.
 
         Rules:
         - Return every transaction row that is fully visible. Skip rows cut off at the top or bottom edge, and skip
@@ -41,9 +43,9 @@ class ClaudeTransactionExtractor implements TransactionExtractor
         - merchant: exactly as shown.
         - amount: the main amount as a decimal string with a dot, signed: money leaving the card (purchases, fees)
           is negative, money coming in (refunds, repayments, top-ups) is positive. Example: "-42.50".
-        - currency: ISO 4217 code of the main amount (zł/PLN → "PLN", € → "EUR", $ → "USD", £ → "GBP").
-        - original_amount / original_currency: the secondary amount and its currency when the row shows one
-          (signed the same way), otherwise null.
+        - currency: always "PLN" (the main amount).
+        - original_amount / original_currency: the amount in the foreign currency and its ISO 4217 code
+          (€ → "EUR", $ → "USD", £ → "GBP") when the row shows one, signed the same way; otherwise null.
         - status: "pending", "declined" or "reverted" when the row says so, otherwise "completed".
         - If the image is not a Revolut transaction list, return an empty list.
         TXT;
@@ -155,6 +157,11 @@ class ClaudeTransactionExtractor implements TransactionExtractor
 
             $originalAmount = self::milliunits($row['original_amount'] ?? null);
             $originalCurrency = is_string($row['original_currency'] ?? null) ? strtoupper(trim($row['original_currency'])) : null;
+
+            // The card is billed in PLN: if the model put the PLN amount in the "original" slot, swap them back.
+            if ($currency !== ExtractedTransaction::ACCOUNT_CURRENCY && $originalCurrency === ExtractedTransaction::ACCOUNT_CURRENCY && $originalAmount !== null) {
+                [$amount, $originalAmount, $currency, $originalCurrency] = [$originalAmount, $amount, $originalCurrency, $currency];
+            }
             $status = in_array($row['status'] ?? null, ExtractedTransaction::STATUSES, true) ? $row['status'] : 'completed';
 
             $result[] = new ExtractedTransaction(

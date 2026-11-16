@@ -31,7 +31,7 @@ new #[Title('Card import')] class extends Component {
     #[Validate(['screenshots' => ['required', 'array', 'max:10'], 'screenshots.*' => ['image', 'mimes:png,jpg,jpeg,webp,gif', 'max:5120']])]
     public array $screenshots = [];
 
-    /** @var list<array{occurredAt: string, description: string, amount: int, currency: string, originalAmount: int|null, originalCurrency: string|null, status: string, hash: string, duplicate: bool, selected: bool}> */
+    /** @var list<array{occurredAt: string, description: string, amount: int, currency: string, originalAmount: int|null, originalCurrency: string|null, status: string, hash: string, wrongCurrency: bool, duplicate: bool, selected: bool}> */
     public array $rows = [];
 
     /** @var list<string> */
@@ -83,6 +83,7 @@ new #[Title('Card import')] class extends Component {
         $this->rows = array_map(
             fn (array $p): array => [
                 ...$p['transaction']->toArray(),
+                'wrongCurrency' => $p['transaction']->wrongCurrency(),
                 'duplicate' => $p['duplicate'],
                 'selected' => ! $p['duplicate'] && $p['transaction']->selectedByDefault(),
             ],
@@ -292,6 +293,9 @@ new #[Title('Card import')] class extends Component {
                             @endif
                             @if ($row['status'] !== 'completed')
                                 <flux:badge size="sm" color="amber">{{ $row['status'] }}</flux:badge>
+                            @endif
+                            @if ($row['wrongCurrency'])
+                                <flux:badge size="sm" color="red">{{ __('not PLN — check the amount') }}</flux:badge>
                             @endif
                             @if ($row['duplicate'])
                                 <flux:badge size="sm" color="zinc">{{ __('already imported') }}</flux:badge>

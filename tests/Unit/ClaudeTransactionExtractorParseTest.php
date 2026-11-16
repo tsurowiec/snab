@@ -40,3 +40,24 @@ it('drops the original amount when its currency is missing', function () {
 
     expect($rows[0]->originalAmount)->toBeNull();
 });
+
+it('swaps amounts when the PLN amount was returned as the original', function () {
+    $rows = ClaudeTransactionExtractor::parse(['transactions' => [
+        ['date' => '2026-11-15', 'time' => '14:32', 'merchant' => 'Booking.com', 'amount' => '-285.00', 'currency' => 'EUR', 'original_amount' => '-1234.56', 'original_currency' => 'PLN', 'status' => 'completed'],
+    ]]);
+
+    expect($rows[0]->amount)->toBe(-1234560)
+        ->and($rows[0]->currency)->toBe('PLN')
+        ->and($rows[0]->originalAmount)->toBe(-285000)
+        ->and($rows[0]->originalCurrency)->toBe('EUR')
+        ->and($rows[0]->wrongCurrency())->toBeFalse();
+});
+
+it('flags a non-PLN main amount and does not preselect it', function () {
+    $rows = ClaudeTransactionExtractor::parse(['transactions' => [
+        ['date' => '2026-11-15', 'time' => '14:32', 'merchant' => 'Shop', 'amount' => '-10.00', 'currency' => 'EUR', 'original_amount' => null, 'original_currency' => null, 'status' => 'completed'],
+    ]]);
+
+    expect($rows[0]->wrongCurrency())->toBeTrue()
+        ->and($rows[0]->selectedByDefault())->toBeFalse();
+});

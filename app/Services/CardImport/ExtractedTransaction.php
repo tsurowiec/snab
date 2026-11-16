@@ -10,6 +10,9 @@ final readonly class ExtractedTransaction
 {
     public const STATUSES = ['completed', 'pending', 'declined', 'reverted'];
 
+    /** The Revolut credit card is always billed in PLN; any other currency is the original amount of a foreign purchase. */
+    public const ACCOUNT_CURRENCY = 'PLN';
+
     public function __construct(
         public CarbonImmutable $occurredAt,
         public string $description,
@@ -25,10 +28,15 @@ final readonly class ExtractedTransaction
         return CardTransaction::hashFor($this->occurredAt, $this->amount, $this->currency, $this->description);
     }
 
-    /** Declined/reverted rows never moved money, so they aren't selected by default. */
+    /** Declined/reverted rows never moved money, and a non-PLN main amount is a misread, so neither is selected by default. */
     public function selectedByDefault(): bool
     {
-        return in_array($this->status, ['completed', 'pending'], true);
+        return in_array($this->status, ['completed', 'pending'], true) && ! $this->wrongCurrency();
+    }
+
+    public function wrongCurrency(): bool
+    {
+        return $this->currency !== self::ACCOUNT_CURRENCY;
     }
 
     /**

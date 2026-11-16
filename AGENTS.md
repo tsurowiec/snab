@@ -139,8 +139,11 @@ Livewire components resolve services with `app(...)` and catch `YnabException` t
 - A screenshot shows date headers ("Today", "Yesterday", "12 Nov"). Under each header are rows with the merchant,
   the time and the amount. Claude resolves the headers to dates using today's date, which is sent in the prompt.
   A header without a year means its most recent past occurrence.
-- Amounts are **milliunits**, signed like YNAB: spending is negative. `original_amount` and `original_currency`
-  hold the secondary amount on foreign purchases.
+- Amounts are **milliunits**, signed like YNAB: spending is negative.
+- **The card is always in PLN** (`ExtractedTransaction::ACCOUNT_CURRENCY`), so the main amount is PLN.
+  `original_amount` and `original_currency` hold the foreign amount on foreign purchases. `parse()` swaps the two
+  if Claude returns them the wrong way round. A row that still isn't in PLN is flagged in the review and not
+  selected by default.
 - **Dedup hash** = `sha256("Y-m-d H:i|amount|CURRENCY|normalized description")`. The description is lowercased,
   trimmed and has its whitespace collapsed. The hash is unique per `(user_id, hash)`. A duplicate in the review is
   shown as "already imported" and can't be selected.
