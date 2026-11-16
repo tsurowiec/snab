@@ -191,3 +191,21 @@ it('clears only the current user\'s rate cache', function () {
     expect($this->user->exchangeRates()->count())->toBe(0)
         ->and($other->exchangeRates()->count())->toBe(1);
 });
+
+describe('card import account', function () {
+    it('saves an account from the budget and rejects unknown ids', function () {
+        fakeApis(accounts: [['id' => 'acc-revolut', 'name' => 'Revolut CC', 'balance' => 0, 'type' => 'creditCard', 'closed' => false, 'deleted' => false]]);
+        $user = User::factory()->withYnabToken()->create();
+        Livewire::actingAs($user)
+            ->test('pages::settings.ynab')
+            ->assertSee('Revolut CC (creditCard)')
+            ->set('cardImportAccountId', 'nope')
+            ->call('saveCardImportAccount')
+            ->assertHasErrors('cardImportAccountId')
+            ->set('cardImportAccountId', 'acc-revolut')
+            ->call('saveCardImportAccount')
+            ->assertHasNoErrors();
+
+        expect($user->setting(Setting::CARD_IMPORT_YNAB_ACCOUNT))->toBe('acc-revolut');
+    });
+});

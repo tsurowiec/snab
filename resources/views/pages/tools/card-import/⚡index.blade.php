@@ -7,6 +7,8 @@ use App\Services\CardImport\ClaudeTransactionExtractor;
 use App\Services\CardImport\ExtractedTransaction;
 use App\Services\CardImport\ExtractionException;
 use App\Services\CardImport\TransactionExtractor;
+use App\Services\CardImport\YnabExporter;
+use App\Services\Ynab\YnabException;
 use Flux\Flux;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
@@ -34,6 +36,8 @@ new #[Title('Card import')] class extends Component {
 
     /** @var list<string> */
     public array $extractErrors = [];
+
+    public ?string $ynabError = null;
 
     /** Claude usage of the last extraction (all screenshots, including failed ones). @var array{calls: int, inputTokens: int, outputTokens: int, costMicros: int|null}|null */
     public ?array $lastUsage = null;
@@ -106,10 +110,57 @@ new #[Title('Card import')] class extends Component {
         $this->rows = [];
         $this->resetPage();
 
-        Flux::toast(variant: 'success', text: __(':saved saved, :skipped already imported.', [
+        $message = __(':saved saved, :skipped already imported.', [
             'saved' => $result['saved'],
             'skipped' => $result['skipped'] + $duplicates,
-        ]));
+        ]);
+
+        if (! $this->ynabReady) {
+            Flux::toast(variant: 'success', text: $message);
+
+            return;
+        }
+
+        $this->sendToYnab($message);
+    }
+
+    /** Push every not-yet-recorded transaction to YNAB (also the retry for earlier failures). */
+    public function sendToYnab(?string $prefix = null): void
+    {
+        $this->ynabError = null;
+
+        try {
+            $result = app(YnabExporter::class)->export(Auth::user());
+        } catch (YnabException $e) {
+            $this->ynabError = $e->getMessage();
+            if ($prefix !== null) {
+                Flux::toast(variant: 'warning', text: $prefix.' '.__('Sending to YNAB failed.'));
+            }
+
+            return;
+        }
+
+        $sent = __(':sent sent to YNAB.', ['sent' => $result['sent']]);
+        if ($result['alreadyInYnab'] > 0) {
+            $sent .= ' '.__(':count were already in YNAB.', ['count' => $result['alreadyInYnab']]);
+        }
+
+        Flux::toast(variant: 'success', text: trim(($prefix ?? '').' '.$sent));
+    }
+
+    /** YNAB token and target account are set, so Save also sends. */
+    #[Computed]
+    public function ynabReady(): bool
+    {
+        $user = Auth::user();
+
+        return $user->hasYnabToken() && app(YnabExporter::class)->accountId($user) !== null;
+    }
+
+    #[Computed]
+    public function unsentCount(): int
+    {
+        return app(YnabExporter::class)->pendingCount(Auth::user());
     }
 
     /** @return array{calls: int, inputTokens: int, outputTokens: int, costMicros: int|null}|null */
@@ -253,7 +304,11 @@ new #[Title('Card import')] class extends Component {
             <div class="flex justify-end gap-2 pt-2">
                 <flux:button variant="ghost" wire:click="discard">{{ __('Discard') }}</flux:button>
                 <flux:button variant="primary" wire:click="save" :disabled="$this->selectedCount === 0" data-test="save-button">
-                    {{ trans_choice('{0} Nothing to save|{1} Save 1 transaction|[2,*] Save :count transactions', $this->selectedCount, ['count' => $this->selectedCount]) }}
+                    @if ($this->ynabReady)
+                        {{ trans_choice('{0} Nothing to save|{1} Save & send 1 to YNAB|[2,*] Save & send :count to YNAB', $this->selectedCount, ['count' => $this->selectedCount]) }}
+                    @else
+                        {{ trans_choice('{0} Nothing to save|{1} Save 1 transaction|[2,*] Save :count transactions', $this->selectedCount, ['count' => $this->selectedCount]) }}
+                    @endif
                 </flux:button>
             </div>
         </div>
@@ -261,7 +316,28 @@ new #[Title('Card import')] class extends Component {
 
     {{-- 3. Stored --}}
     <div class="flex flex-col gap-2">
-        <flux:heading size="lg">{{ __('Imported transactions') }}</flux:heading>
+        <div class="flex items-center justify-between gap-3">
+            <flux:heading size="lg">{{ __('Imported transactions') }}</flux:heading>
+            @if ($this->unsentCount > 0)
+                <flux:button size="sm" icon="arrow-up-tray" wire:click="sendToYnab" :disabled="! $this->ynabReady" data-test="send-to-ynab">
+                    {{ trans_choice('{1} Send 1 to YNAB|[2,*] Send :count to YNAB', $this->unsentCount, ['count' => $this->unsentCount]) }}
+                </flux:button>
+            @endif
+        </div>
+
+        @if ($ynabError)
+            <flux:callout variant="danger" icon="x-circle" :heading="$ynabError" data-test="ynab-error">
+                <x-slot name="actions">
+                    <flux:button wire:click="sendToYnab" size="sm">{{ __('Retry sending') }}</flux:button>
+                </x-slot>
+            </flux:callout>
+        @elseif ($this->unsentCount > 0 && ! $this->ynabReady)
+            <flux:callout variant="warning" icon="exclamation-triangle" :heading="__('Not sent to YNAB yet')">
+                <flux:callout.text>
+                    <flux:link :href="route('ynab.edit')" wire:navigate>{{ __('Set a YNAB token and the card import account in Settings → YNAB.') }}</flux:link>
+                </flux:callout.text>
+            </flux:callout>
+        @endif
 
         @forelse ($this->saved as $tx)
             <div wire:key="saved-{{ $tx->id }}" class="flex items-center justify-between gap-3 border-b border-zinc-200 py-2 dark:border-zinc-700" data-test="saved-row">
@@ -271,7 +347,7 @@ new #[Title('Card import')] class extends Component {
                 </div>
                 <div class="flex shrink-0 items-center gap-2 text-sm">
                     <span @class(['font-semibold', 'text-green-600' => $tx->amount > 0])>{{ $money($tx->amount) }} {{ $tx->currency }}</span>
-                    <flux:badge size="sm" :color="$tx->status === CardTransaction::STATUS_RECORDED ? 'green' : 'blue'">{{ $tx->status }}</flux:badge>
+                    <flux:badge size="sm" :color="$tx->status === CardTransaction::STATUS_RECORDED ? 'green' : 'blue'">{{ $tx->status === CardTransaction::STATUS_RECORDED ? __('in YNAB') : __('not sent') }}</flux:badge>
                 </div>
             </div>
         @empty

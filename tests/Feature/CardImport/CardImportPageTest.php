@@ -1,11 +1,14 @@
 <?php
 
+use App\Models\CardTransaction;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\CardImport\ExtractedTransaction;
 use App\Services\CardImport\ExtractionException;
 use App\Services\CardImport\TransactionExtractor;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
 /** @param list<ExtractedTransaction>|ExtractionException $result */
@@ -151,4 +154,67 @@ it('starts each extraction with no leftover screenshots', function () {
         ->call('extract')
         ->assertSee('already imported')
         ->tap(fn ($page) => expect($page->get('rows'))->toHaveCount(3));
+});
+
+describe('sending to YNAB', function () {
+    beforeEach(function () {
+        $this->user = User::factory()->withAnthropicKey()->withYnabToken()->create();
+        $this->user->setSetting(Setting::CARD_IMPORT_YNAB_ACCOUNT, 'acc-revolut');
+    });
+
+    it('sends saved transactions to YNAB in the same step', function () {
+        fakeExtractor(screenshotRows());
+        fakeApis();
+
+        Livewire::actingAs($this->user)
+            ->test('pages::tools.card-import.index')
+            ->set('screenshots', [UploadedFile::fake()->image('revolut.png')])
+            ->call('extract')
+            ->assertSee('Save & send 2 to YNAB')
+            ->call('save')
+            ->assertSet('ynabError', null)
+            ->assertSee('in YNAB');
+
+        expect($this->user->cardTransactions()->where('status', 'recorded')->count())->toBe(2);
+        Http::assertSent(fn ($r) => $r->method() === 'POST' && count($r['transactions']) === 2);
+    });
+
+    it('shows the YNAB error and retries', function () {
+        fakeExtractor(screenshotRows());
+        $ynabDown = true;
+        Http::fake(function ($request) use (&$ynabDown) {
+            if ($ynabDown) {
+                return Http::response(['error' => ['detail' => 'YNAB is down']], 503);
+            }
+
+            return Http::response(['data' => [
+                'transactions' => collect($request['transactions'])->map(fn (array $t, int $i) => [...$t, 'id' => "y{$i}"])->all(),
+                'duplicate_import_ids' => [],
+            ]], 201);
+        });
+
+        $page = Livewire::actingAs($this->user)
+            ->test('pages::tools.card-import.index')
+            ->set('screenshots', [UploadedFile::fake()->image('revolut.png')])
+            ->call('extract')
+            ->call('save')
+            ->assertSee('YNAB is down')
+            ->assertSee('Send 2 to YNAB');
+
+        expect($this->user->cardTransactions()->count())->toBe(2); // saved locally anyway
+
+        $ynabDown = false;
+        $page->call('sendToYnab')->assertSet('ynabError', null)->assertDontSee('Send 2 to YNAB');
+
+        expect($this->user->cardTransactions()->where('status', 'new')->count())->toBe(0);
+    });
+});
+
+it('asks to set up YNAB when transactions are not sent', function () {
+    CardTransaction::factory()->for($this->user)->create();
+
+    Livewire::actingAs($this->user)
+        ->test('pages::tools.card-import.index')
+        ->assertSee('Not sent to YNAB yet')
+        ->assertSee('not sent');
 });

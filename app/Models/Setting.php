@@ -24,6 +24,9 @@ class Setting extends Model
 
     public const YNAB_PLAN_ID = 'ynab_plan_id';
 
+    /** YNAB account id that Card import sends transactions to. */
+    public const CARD_IMPORT_YNAB_ACCOUNT = 'card_import_ynab_account_id';
+
     /** Stored encrypted — use $user->ynabToken() / $user->setYnabToken(). */
     public const YNAB_TOKEN = 'ynab_token';
 

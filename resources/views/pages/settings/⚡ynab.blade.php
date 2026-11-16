@@ -39,10 +39,14 @@ new #[Title('YNAB settings')] class extends Component {
     /** Form state keyed by YNAB account id: @var array<string, array{enabled: bool, currency: string}> */
     public array $selection = [];
 
+    /** YNAB account that Card import sends transactions to ('' = not chosen). */
+    public string $cardImportAccountId = '';
+
     public function mount(): void
     {
         $this->configured = Auth::user()->hasYnabToken();
         $this->planId = Auth::user()->ynabPlanId();
+        $this->cardImportAccountId = (string) Auth::user()->setting(Setting::CARD_IMPORT_YNAB_ACCOUNT);
 
         if ($this->configured) {
             $this->loadRemote();
@@ -131,6 +135,20 @@ new #[Title('YNAB settings')] class extends Component {
         $this->loadRemote();
 
         Flux::toast(variant: 'success', text: __('Budget saved.'));
+    }
+
+    public function saveCardImportAccount(): void
+    {
+        $this->validate(['cardImportAccountId' => ['nullable', 'string', 'in:'.implode(',', array_column($this->remoteAccounts, 'id'))]]);
+
+        $user = Auth::user();
+        if ($this->cardImportAccountId === '') {
+            $user->settings()->where('key', Setting::CARD_IMPORT_YNAB_ACCOUNT)->delete();
+        } else {
+            $user->setSetting(Setting::CARD_IMPORT_YNAB_ACCOUNT, $this->cardImportAccountId);
+        }
+
+        Flux::toast(variant: 'success', text: __('Card import account saved.'));
     }
 
     public function saveAccounts(): void
@@ -298,6 +316,23 @@ new #[Title('YNAB settings')] class extends Component {
                 </flux:select>
                 <div>
                     <flux:button type="submit" variant="primary" :disabled="! $configured">{{ __('Save budget') }}</flux:button>
+                </div>
+            </form>
+
+            {{-- Card import target account --}}
+            <form wire:submit="saveCardImportAccount" class="flex flex-col gap-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Card import account') }}</flux:heading>
+                    <flux:text>{{ __('Card transactions read from Revolut screenshots are sent to this account, unapproved, so you can review them in YNAB.') }}</flux:text>
+                </div>
+                <flux:select wire:model="cardImportAccountId" :label="__('YNAB account')" data-test="card-import-account-select">
+                    <flux:select.option value="">{{ __('— Not sent to YNAB —') }}</flux:select.option>
+                    @foreach ($remoteAccounts as $account)
+                        <flux:select.option :value="$account['id']">{{ $account['name'] }} ({{ $account['type'] }})</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <div>
+                    <flux:button type="submit" variant="primary" :disabled="! $configured">{{ __('Save account') }}</flux:button>
                 </div>
             </form>
 

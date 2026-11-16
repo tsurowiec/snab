@@ -74,6 +74,23 @@ class YnabClient
     }
 
     /**
+     * Create transactions. YNAB skips any whose import_id already exists in the account and lists those in
+     * `duplicate_import_ids`.
+     *
+     * @param  list<array<string, mixed>>  $transactions
+     * @return array{transactions: list<array<string, mixed>>, duplicate_import_ids: list<string>}
+     */
+    public function createTransactions(string $planId, array $transactions): array
+    {
+        $data = $this->send('post', "/plans/{$planId}/transactions", ['transactions' => $transactions]);
+
+        return [
+            'transactions' => $data['transactions'] ?? [],
+            'duplicate_import_ids' => $data['duplicate_import_ids'] ?? [],
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $query
      * @return array<string, mixed>
      */

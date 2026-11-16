@@ -50,6 +50,12 @@ class CardTransaction extends Model
         ];
     }
 
+    /** YNAB import_id (max 36 chars): YNAB itself rejects a second transaction with the same id in an account. */
+    public function importId(): string
+    {
+        return 'SNAB:'.substr($this->hash, 0, 31);
+    }
+
     /**
      * Dedup key: minute-precision date/time, amount, currency and a normalized description
      * (lowercased, trimmed, whitespace collapsed), so small OCR spacing/case differences still match.

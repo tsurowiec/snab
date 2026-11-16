@@ -53,8 +53,9 @@ function fakeApis(
     array $nbpRates = [],
     array $accounts = [],
     array $plans = [],
+    array $duplicateImportIds = [],
 ): void {
-    Http::fake(function (Request $request) use ($transactions, $serverKnowledge, $nbpRates, $accounts, $plans) {
+    Http::fake(function (Request $request) use ($transactions, $serverKnowledge, $nbpRates, $accounts, $plans, $duplicateImportIds) {
         $path = (string) parse_url($request->url(), PHP_URL_PATH);
 
         if (str_contains($request->url(), 'api.nbp.pl')) {
@@ -71,6 +72,15 @@ function fakeApis(
         }
 
         return match (true) {
+            $request->method() === 'POST' && str_ends_with($path, '/transactions') => Http::response(['data' => [
+                'transaction_ids' => [],
+                'transactions' => collect($request['transactions'])
+                    ->reject(fn (array $t) => in_array($t['import_id'] ?? null, $duplicateImportIds, true))
+                    ->map(fn (array $t, int $i) => [...$t, 'id' => 'ynab-'.$i])
+                    ->values()->all(),
+                'duplicate_import_ids' => $duplicateImportIds,
+                'server_knowledge' => $serverKnowledge + 1,
+            ]], 201),
             $request->method() === 'PATCH' && str_ends_with($path, '/transactions') => Http::response(['data' => ['transaction_ids' => [], 'server_knowledge' => $serverKnowledge + 1]]),
             (bool) preg_match('#/accounts/[^/]+/transactions$#', $path) => Http::response(['data' => ['transactions' => $transactions, 'server_knowledge' => $serverKnowledge]]),
             (bool) preg_match('#/plans/[^/]+/accounts$#', $path) => Http::response(['data' => ['accounts' => $accounts, 'server_knowledge' => $serverKnowledge]]),

@@ -6,8 +6,8 @@ Guidance for AI coding agents (and humans) working in this repository.
 
 - **Conversions** is a port of `../fintex/ynab-euro` (Node/Hono + React PWA). It converts foreign-currency YNAB
   transactions to PLN using NBP exchange rates.
-- **Card import** reads Revolut credit-card transactions from screenshots with Claude (Anthropic PHP SDK) and stores
-  each one once. Pushing them to YNAB comes later.
+- **Card import** reads Revolut credit-card transactions from screenshots with Claude (Anthropic PHP SDK). It stores
+  each one once and sends it to a YNAB account.
 
 ## Stack
 
@@ -98,6 +98,7 @@ app/
       ClaudeTransactionExtractor.php  screenshot → Claude (claude-sonnet-5-5, beta endpoint + server-side fallback, strict JSON schema) → parse()
       ExtractedTransaction.php     DTO, hash()
       CardImportService.php        preview() flags duplicates, store() inserts new rows (insertOrIgnore)
+      YnabExporter.php             export(): POSTs status=new rows to the chosen YNAB account and marks them recorded
     Anthropic/AnthropicKeyVerifier.php   checks a key (models list) before it's saved
     Anthropic/Pricing.php          list prices per model ($/MTok) → cost in micro-dollars
     Anthropic/UsageRecorder.php    stores an llm_usages row per Claude response (prices fallback iterations per model)
@@ -144,8 +145,16 @@ Livewire components resolve services with `app(...)` and catch `YnabException` t
   trimmed and has its whitespace collapsed. The hash is unique per `(user_id, hash)`. A duplicate in the review is
   shown as "already imported" and can't be selected.
 - Declined and reverted rows are shown in the review but not selected by default.
-- Screenshots are never stored; only the extracted rows are. `status` is `new`. It will become `recorded` once a
-  row has been pushed to YNAB, which is the next step, and `ynab_transaction_id` is reserved for that.
+- Screenshots are never stored; only the extracted rows are.
+- **YNAB export:**
+  - **When:** Save stores the rows and then calls `YnabExporter::export()`, but only if the user has a YNAB token
+    and a target account (`Setting::CARD_IMPORT_YNAB_ACCOUNT`, chosen in Settings → YNAB).
+  - **What it sends:** every `status = new` row, as an unapproved and uncleared transaction. Payee = description,
+    memo = `HH:MM` plus the original amount if there is one.
+  - **Dedup:** `import_id = "SNAB:" + first 31 chars of the hash`. YNAB refuses duplicates per account; its
+    `duplicate_import_ids` are marked `recorded` too.
+  - **After sending:** rows become `recorded`, with `ynab_transaction_id` set.
+  - **On failure:** rows stay `new`, and the page shows the error with "Retry sending" and "Send N to YNAB".
 
 ## Claude usage tracking
 
