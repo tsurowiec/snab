@@ -10,6 +10,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Tools — each tool lives under resources/views/pages/tools/<tool>/
     Route::livewire('conversions', 'pages::tools.conversions.index')->name('conversions.index');
     Route::livewire('conversions/{account}', 'pages::tools.conversions.show')->name('conversions.show');
+    Route::livewire('card-import', 'pages::tools.card-import.index')->name('card-import.index');
 });
 
 require __DIR__.'/settings.php';

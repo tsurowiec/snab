@@ -2,9 +2,12 @@
 
 Guidance for AI coding agents (and humans) working in this repository.
 
-**snab** ("Suro needs a budget") is a personal Laravel app hosting small YNAB budgeting tools.
-The first tool, **Conversions**, is a port of `../fintex/ynab-euro` (Node/Hono + React PWA):
-it converts foreign-currency YNAB transactions to PLN using NBP exchange rates.
+**snab** ("Suro needs a budget") is a personal Laravel app hosting small YNAB budgeting tools:
+
+- **Conversions** is a port of `../fintex/ynab-euro` (Node/Hono + React PWA). It converts foreign-currency YNAB
+  transactions to PLN using NBP exchange rates.
+- **Card import** reads Revolut credit-card transactions from screenshots with Claude (Anthropic PHP SDK) and stores
+  each one once. Pushing them to YNAB comes later.
 
 ## Stack
 
@@ -22,12 +25,12 @@ composer run dev              # dev server + queue + logs + vite
 php artisan test              # run the Pest suite (or ./vendor/bin/pest)
 composer test                 # pint --test + phpstan + tests (what CI should run)
 ./vendor/bin/pint             # fix code style
-./vendor/bin/phpstan analyse  # static analysis
+./vendor/bin/phpstan analyse --memory-limit=1G  # static analysis
 npm run build                 # build assets (needed after JS/CSS changes when not running vite)
 php artisan snab:user you@example.com   # create a user / reset a password (no public registration)
 ```
 
-Always run `php artisan test` and `./vendor/bin/phpstan analyse` before finishing a change.
+Always run `composer test` (or at least `php artisan test` and phpstan) before finishing a change.
 
 ## Configuration (`.env`)
 
@@ -36,7 +39,8 @@ Always run `php artisan test` and `./vendor/bin/phpstan analyse` before finishin
 | `APP_KEY` | Also encrypts the users' YNAB tokens. If you rotate it, every user has to re-enter their token. |
 | `YNAB_BASE_URL` / `NBP_BASE_URL` | Optional API overrides (default `https://api.ynab.com/v1`, `https://api.nbp.pl/api`). |
 
-All per-user config lives in the DB and is managed in the GUI under **Settings → YNAB** (`/settings/ynab`):
+The **Anthropic API key** is per user too, set in **Settings → AI** (`/settings/ai`).
+All other per-user config lives in the DB and is managed in the GUI under **Settings → YNAB** (`/settings/ynab`):
 the **YNAB personal access token**, the selected budget, accounts and currencies, and the caches. There are deliberately **no CLI tools** besides `snab:user`. The old ynab-euro
 CLI commands are buttons there:
 
@@ -65,6 +69,8 @@ Registration is off, but the app may get more users later, so **every app table 
 - **The YNAB token belongs to the user.** Read and write it only through `$user->ynabToken()`, `setYnabToken()` and `hasYnabToken()`.
   It is stored with `Crypt::encryptString` under `Setting::YNAB_TOKEN`. Never put it in a public Livewire property, a view or a log.
   Always get a client with `app(YnabClientFactory::class)->forUser($user)`. There is no app-wide token or client.
+- **The Anthropic API key follows the same rule.** Use `$user->anthropicApiKey()`, `setAnthropicApiKey()` and
+  `hasAnthropicApiKey()`, stored under `Setting::ANTHROPIC_API_KEY`. Both secrets use the private `encryptedSetting()` helpers on `User`.
 - New tables must follow the same rule. Add an isolation test to `tests/Feature/UserIsolationTest.php`.
 
 ## Architecture
@@ -76,6 +82,7 @@ app/
     User.php                       relations + setting()/setSetting()/ynabToken()/setYnabToken()/ynabPlanId()
     YnabAccount.php                enabled foreign-currency accounts (+ server_knowledge for delta sync)
     ExchangeRate.php               cached NBP rates
+    CardTransaction.php            card transactions from screenshots; hashFor() = dedup key
     Setting.php                    per-user key/value
   Services/
     Ynab/YnabClient.php            YNAB REST wrapper (Http facade), one per token; throws YnabException
@@ -85,11 +92,19 @@ app/
       PendingFilter.php            which transactions still need processing
       ConversionService.php        pending() / pendingCount() / apply(): the one shared implementation
       PendingTransaction.php, ConversionResult.php   DTOs
+    CardImport/
+      TransactionExtractor.php     interface (bound to ClaudeTransactionExtractor; tests bind a fake)
+      ClaudeTransactionExtractor.php  screenshot → Claude (claude-opus-5-5, strict JSON schema) → parse()
+      ExtractedTransaction.php     DTO, hash()
+      CardImportService.php        preview() flags duplicates, store() inserts new rows (insertOrIgnore)
+    Anthropic/AnthropicKeyVerifier.php   checks a key (models list) before it's saved
   Console/Commands/CreateUser.php  snab:user
 resources/views/pages/
   tools/conversions/⚡index.blade.php   account list (route conversions.index, PWA start_url)
   tools/conversions/⚡show.blade.php    transaction picker + confirm modal (route conversions.show)
+  tools/card-import/⚡index.blade.php   upload → review → save, plus the imported list
   settings/⚡ynab.blade.php              Settings → YNAB
+  settings/⚡ai.blade.php                Settings → AI (Anthropic key)
 resources/js/tools/conversions.js       Alpine component: selection, totals, swipe-to-toggle
 ```
 
@@ -114,6 +129,20 @@ Livewire components resolve services with `app(...)` and catch `YnabException` t
 - **Rate cache:** rates are cached in `exchange_rates`. A fallback rate for today or a future date is *not* cached, because NBP publishes
   the day's table around noon.
 
+## Card import: domain rules
+
+- A screenshot shows date headers ("Today", "Yesterday", "12 Nov"). Under each header are rows with the merchant,
+  the time and the amount. Claude resolves the headers to dates using today's date, which is sent in the prompt.
+  A header without a year means its most recent past occurrence.
+- Amounts are **milliunits**, signed like YNAB: spending is negative. `original_amount` and `original_currency`
+  hold the secondary amount on foreign purchases.
+- **Dedup hash** = `sha256("Y-m-d H:i|amount|CURRENCY|normalized description")`. The description is lowercased,
+  trimmed and has its whitespace collapsed. The hash is unique per `(user_id, hash)`. A duplicate in the review is
+  shown as "already imported" and can't be selected.
+- Declined and reverted rows are shown in the review but not selected by default.
+- Screenshots are never stored; only the extracted rows are. `status` is `new`. It will become `recorded` once a
+  row has been pushed to YNAB, which is the next step, and `ynab_transaction_id` is reserved for that.
+
 ## Adding a tool
 
 1. Put the logic in `app/Services/<Tool>/` (plain classes, `User` passed in, no `auth()`).
@@ -136,4 +165,8 @@ Livewire components resolve services with `app(...)` and catch `YnabException` t
   Use `ynabTx([...])` to build a YNAB transaction array.
 - For lazy Livewire pages, call `Livewire::withoutLazyLoading()` before **each** `Livewire::test('pages::...')`. It only
   applies to the next call; without it you only get the placeholder and no YNAB requests are made.
+- Card import: bind a fake with `app()->instance(TransactionExtractor::class, ...)` (see `CardImportPageTest`).
+  `ClaudeTransactionExtractor` takes a PSR-18 transporter, so a Guzzle `MockHandler` can check the real SDK request.
+  The Anthropic SDK doesn't use the `Http` facade.
+- PHPStan needs `--memory-limit=1G` because of the Anthropic SDK. `composer test` already passes it.
 - Assert the outgoing PATCH payload (`Http::assertSent`) for anything that writes to YNAB.

@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\CardImport\ClaudeTransactionExtractor;
+use App\Services\CardImport\TransactionExtractor;
 use App\Services\Rates\NbpRateService;
 use App\Services\Ynab\YnabClientFactory;
 use Carbon\CarbonImmutable;
@@ -24,6 +26,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(NbpRateService::class, fn (): NbpRateService => new NbpRateService(
             config('services.nbp.base_url'),
         ));
+
+        $this->app->bind(TransactionExtractor::class, ClaudeTransactionExtractor::class);
     }
 
     /**

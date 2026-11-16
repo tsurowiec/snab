@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\CardTransaction;
 use App\Models\ExchangeRate;
 use App\Models\Setting;
 use App\Models\User;
@@ -16,6 +17,7 @@ beforeEach(function () {
     $this->bobAccount = YnabAccount::factory()->for($this->bob)->create(['name' => 'Bob EUR']);
     $this->bob->setSetting(Setting::YNAB_PLAN_ID, 'bob-plan');
     $this->bob->exchangeRates()->create(['currency' => 'EUR', 'date' => '2026-01-15', 'rate' => 4.2, 'rate_date' => '2026-01-15']);
+    CardTransaction::factory()->for($this->bob)->create(['description' => 'Bob coffee']);
 });
 
 it('scopes every model to the authenticated user', function () {
@@ -25,6 +27,7 @@ it('scopes every model to the authenticated user', function () {
         ->and(Setting::pluck('key')->all())->toBe([Setting::YNAB_TOKEN])
         ->and($this->alice->ynabToken())->toBe('alice-token')
         ->and(ExchangeRate::count())->toBe(0)
+        ->and(CardTransaction::count())->toBe(0)
         ->and($this->alice->ynabPlanId())->toBe('last-used');
 });
 
@@ -64,7 +67,8 @@ it('cascades deletes from the user', function () {
 
     expect(YnabAccount::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0)
         ->and(Setting::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0)
-        ->and(ExchangeRate::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0);
+        ->and(ExchangeRate::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0)
+        ->and(CardTransaction::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0);
 });
 
 it('calls YNAB with each user\'s own token', function () {
@@ -78,4 +82,10 @@ it('calls YNAB with each user\'s own token', function () {
     Livewire::withoutLazyLoading(); // applies to a single test() call only
     Livewire::actingAs($this->bob)->test('pages::tools.conversions.index');
     Http::assertSent(fn (Request $r) => $r->hasHeader('Authorization', 'Bearer bob-token'));
+});
+
+it('does not show another user\'s card transactions', function () {
+    Livewire::actingAs($this->alice)
+        ->test('pages::tools.card-import.index')
+        ->assertDontSee('Bob coffee');
 });

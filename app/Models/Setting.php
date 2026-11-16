@@ -26,4 +26,7 @@ class Setting extends Model
 
     /** Stored encrypted — use $user->ynabToken() / $user->setYnabToken(). */
     public const YNAB_TOKEN = 'ynab_token';
+
+    /** Stored encrypted — use $user->anthropicApiKey() / $user->setAnthropicApiKey(). */
+    public const ANTHROPIC_API_KEY = 'anthropic_api_key';
 }

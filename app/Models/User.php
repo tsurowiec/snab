@@ -79,6 +79,14 @@ class User extends Authenticatable implements PasskeyUser
     }
 
     /**
+     * @return HasMany<CardTransaction, $this>
+     */
+    public function cardTransactions(): HasMany
+    {
+        return $this->hasMany(CardTransaction::class)->withoutGlobalScope('user');
+    }
+
+    /**
      * @return HasMany<Setting, $this>
      */
     public function settings(): HasMany
@@ -99,7 +107,38 @@ class User extends Authenticatable implements PasskeyUser
     /** The user's YNAB personal access token (stored encrypted with APP_KEY). */
     public function ynabToken(): ?string
     {
-        $encrypted = $this->setting(Setting::YNAB_TOKEN);
+        return $this->encryptedSetting(Setting::YNAB_TOKEN);
+    }
+
+    public function setYnabToken(?string $token): void
+    {
+        $this->setEncryptedSetting(Setting::YNAB_TOKEN, $token);
+    }
+
+    public function hasYnabToken(): bool
+    {
+        return $this->ynabToken() !== null;
+    }
+
+    /** The user's Anthropic API key (stored encrypted with APP_KEY), used by Card Import. */
+    public function anthropicApiKey(): ?string
+    {
+        return $this->encryptedSetting(Setting::ANTHROPIC_API_KEY);
+    }
+
+    public function setAnthropicApiKey(?string $key): void
+    {
+        $this->setEncryptedSetting(Setting::ANTHROPIC_API_KEY, $key);
+    }
+
+    public function hasAnthropicApiKey(): bool
+    {
+        return $this->anthropicApiKey() !== null;
+    }
+
+    private function encryptedSetting(string $key): ?string
+    {
+        $encrypted = $this->setting($key);
         if ($encrypted === null) {
             return null;
         }
@@ -107,24 +146,19 @@ class User extends Authenticatable implements PasskeyUser
         try {
             return Crypt::decryptString($encrypted);
         } catch (DecryptException) {
-            return null; // e.g. APP_KEY rotated — the user has to enter the token again
+            return null; // e.g. APP_KEY rotated — the user has to enter the secret again
         }
     }
 
-    public function setYnabToken(?string $token): void
+    private function setEncryptedSetting(string $key, ?string $value): void
     {
-        if (blank($token)) {
-            $this->settings()->where('key', Setting::YNAB_TOKEN)->delete();
+        if (blank($value)) {
+            $this->settings()->where('key', $key)->delete();
 
             return;
         }
 
-        $this->setSetting(Setting::YNAB_TOKEN, Crypt::encryptString(trim($token)));
-    }
-
-    public function hasYnabToken(): bool
-    {
-        return $this->ynabToken() !== null;
+        $this->setSetting($key, Crypt::encryptString(trim($value)));
     }
 
     public function ynabPlanId(): string

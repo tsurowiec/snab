@@ -22,6 +22,9 @@
                     <flux:sidebar.item icon="arrows-right-left" :href="route('conversions.index')" :current="request()->routeIs('conversions.*')" wire:navigate>
                         {{ __('Conversions') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="camera" :href="route('card-import.index')" :current="request()->routeIs('card-import.*')" wire:navigate>
+                        {{ __('Card import') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

@@ -19,6 +19,9 @@ Then open **Settings → YNAB**:
 3. Enable your foreign-currency accounts and set their currencies.
 4. Optionally use **Skip existing** so only new transactions show up.
 
+For **Card import**, paste an Anthropic API key in **Settings → AI**. Then upload Revolut screenshots under
+Tools → Card import.
+
 On a phone, open the site and use **Add to Home Screen** to install it.
 
 ## Development

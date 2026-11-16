@@ -54,6 +54,11 @@ class UserFactory extends Factory
         return $this->afterCreating(fn (User $user) => $user->setYnabToken($token));
     }
 
+    public function withAnthropicKey(string $key = 'sk-ant-test'): static
+    {
+        return $this->afterCreating(fn (User $user) => $user->setAnthropicApiKey($key));
+    }
+
     /**
      * Indicate that the model has two-factor authentication configured.
      */
