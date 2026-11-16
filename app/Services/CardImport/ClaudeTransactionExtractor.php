@@ -61,7 +61,7 @@ class ClaudeTransactionExtractor implements TransactionExtractor
         }
 
         try {
-            $message = (new Client(apiKey: $apiKey, requestOptions: ['transporter' => $this->transporter, 'maxRetries' => $this->transporter ? 0 : null]))->messages->create(
+            $message = $this->client($apiKey)->messages->create(
                 model: self::MODEL,
                 maxTokens: 16000,
                 system: self::SYSTEM,
@@ -102,6 +102,14 @@ class ClaudeTransactionExtractor implements TransactionExtractor
         }
 
         throw new ExtractionException(__('Claude returned no transactions.'));
+    }
+
+    /** Only pass options that are set: a null `transporter` would override the SDK's auto-discovered HTTP client. */
+    public function client(string $apiKey): Client
+    {
+        $options = $this->transporter === null ? null : ['transporter' => $this->transporter, 'maxRetries' => 0];
+
+        return new Client(apiKey: $apiKey, requestOptions: $options);
     }
 
     /**

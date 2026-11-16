@@ -1,5 +1,6 @@
 <?php
 
+use Anthropic\Client;
 use App\Models\User;
 use App\Services\CardImport\ClaudeTransactionExtractor;
 use App\Services\CardImport\ExtractionException;
@@ -76,4 +77,9 @@ it('requires an API key', function () {
 
     expect(fn () => claudeWithResponses([], $history)->extract(User::factory()->create(), 'x', 'image/png'))
         ->toThrow(ExtractionException::class, 'No Anthropic API key');
+});
+
+it('builds a working SDK client without an injected transporter', function () {
+    // Regression: passing transporter => null broke the SDK's HTTP client discovery (AssertionError).
+    expect((new ClaudeTransactionExtractor)->client('sk-ant-key'))->toBeInstanceOf(Client::class);
 });
