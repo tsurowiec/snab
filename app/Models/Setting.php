@@ -23,4 +23,7 @@ class Setting extends Model
     use BelongsToUser;
 
     public const YNAB_PLAN_ID = 'ynab_plan_id';
+
+    /** Stored encrypted — use $user->ynabToken() / $user->setYnabToken(). */
+    public const YNAB_TOKEN = 'ynab_token';
 }

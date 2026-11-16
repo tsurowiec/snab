@@ -33,15 +33,16 @@ Always run `php artisan test` and `./vendor/bin/phpstan analyse` before finishin
 
 | Key | Purpose |
 |---|---|
-| `YNAB_TOKEN` | YNAB personal access token (server-side only, never sent to the browser). Shared by all users for now. |
+| `APP_KEY` | Also encrypts the users' YNAB tokens. If you rotate it, every user has to re-enter their token. |
 | `YNAB_BASE_URL` / `NBP_BASE_URL` | Optional API overrides (default `https://api.ynab.com/v1`, `https://api.nbp.pl/api`). |
 
-Everything else (selected budget, accounts and currencies, caches) lives in the DB and is managed in the GUI under
-**Settings → YNAB** (`/settings/ynab`). There are deliberately **no CLI tools** besides `snab:user`. The old ynab-euro
+All per-user config lives in the DB and is managed in the GUI under **Settings → YNAB** (`/settings/ynab`):
+the **YNAB personal access token**, the selected budget, accounts and currencies, and the caches. There are deliberately **no CLI tools** besides `snab:user`. The old ynab-euro
 CLI commands are buttons there:
 
 | ynab-euro CLI | snab GUI |
 |---|---|
+| `YNAB_TOKEN` env | Settings → YNAB → Personal access token (checked against YNAB, then stored encrypted per user) |
 | `list-plans` | Settings → YNAB → Budget dropdown (stored as the `ynab_plan_id` setting, default `last-used`) |
 | `list-accounts` + `YNAB_ACCOUNTS` env | Settings → YNAB → Foreign-currency accounts (enable toggle + currency) |
 | `init-cache` | Settings → YNAB → Caches → "Skip existing" (per account or all) |
@@ -61,6 +62,9 @@ Registration is off, but the app may get more users later, so **every app table 
 - Route model binding runs through the scope, so another user's record returns **404**. Policies
   (`app/Policies`) add an explicit check in components (`$this->authorize(...)`).
 - Per-user settings: `$user->setting($key, $default)`, `$user->setSetting($key, $value)`, keys as constants on `Setting`.
+- **The YNAB token belongs to the user.** Read and write it only through `$user->ynabToken()`, `setYnabToken()` and `hasYnabToken()`.
+  It is stored with `Crypt::encryptString` under `Setting::YNAB_TOKEN`. Never put it in a public Livewire property, a view or a log.
+  Always get a client with `app(YnabClientFactory::class)->forUser($user)`. There is no app-wide token or client.
 - New tables must follow the same rule. Add an isolation test to `tests/Feature/UserIsolationTest.php`.
 
 ## Architecture
@@ -69,12 +73,13 @@ Registration is off, but the app may get more users later, so **every app table 
 app/
   Models/
     Concerns/BelongsToUser.php     user scoping trait (see above)
-    User.php                       relations + setting()/setSetting()/ynabPlanId()
+    User.php                       relations + setting()/setSetting()/ynabToken()/setYnabToken()/ynabPlanId()
     YnabAccount.php                enabled foreign-currency accounts (+ server_knowledge for delta sync)
     ExchangeRate.php               cached NBP rates
     Setting.php                    per-user key/value
   Services/
-    Ynab/YnabClient.php            YNAB REST wrapper (Http facade); throws YnabException
+    Ynab/YnabClient.php            YNAB REST wrapper (Http facade), one per token; throws YnabException
+    Ynab/YnabClientFactory.php     forUser($user) / withToken($token)
     Rates/NbpRateService.php       NBP table A mid-rate per date, DB-cached
     Conversions/
       PendingFilter.php            which transactions still need processing
@@ -88,7 +93,7 @@ resources/views/pages/
 resources/js/tools/conversions.js       Alpine component: selection, totals, swipe-to-toggle
 ```
 
-`YnabClient` and `NbpRateService` are singletons bound in `AppServiceProvider` from `config/services.php`.
+`YnabClientFactory` and `NbpRateService` are singletons bound in `AppServiceProvider` from `config/services.php`.
 Livewire components resolve services with `app(...)` and catch `YnabException` to show errors inline.
 
 ## Conversions: domain rules (keep these when changing anything)
@@ -124,9 +129,11 @@ Livewire components resolve services with `app(...)` and catch `YnabException` t
 ## Testing conventions
 
 - Pest function syntax for new tests. The kit's original tests are PHPUnit classes and run under Pest unchanged.
-- `tests/Pest.php` applies `RefreshDatabase` to `Feature` and `Unit`, calls `Http::preventStrayRequests()`, and sets a
-  fake YNAB token.
+- `tests/Pest.php` applies `RefreshDatabase` to `Feature` and `Unit` and calls `Http::preventStrayRequests()`.
+- Users that talk to YNAB need a token: `User::factory()->withYnabToken('optional-token')`. `YnabAccount::factory()` creates
+  its user with a token already.
 - Use the `fakeApis(transactions:, serverKnowledge:, nbpRates:, accounts:, plans:)` helper to fake YNAB and NBP together.
   Use `ynabTx([...])` to build a YNAB transaction array.
-- For lazy Livewire pages, call `Livewire::withoutLazyLoading()` before `Livewire::test('pages::...')`.
+- For lazy Livewire pages, call `Livewire::withoutLazyLoading()` before **each** `Livewire::test('pages::...')`. It only
+  applies to the next call; without it you only get the placeholder and no YNAB requests are made.
 - Assert the outgoing PATCH payload (`Http::assertSent`) for anything that writes to YNAB.

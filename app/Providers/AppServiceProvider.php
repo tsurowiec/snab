@@ -3,7 +3,7 @@
 namespace App\Providers;
 
 use App\Services\Rates\NbpRateService;
-use App\Services\Ynab\YnabClient;
+use App\Services\Ynab\YnabClientFactory;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -17,8 +17,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(YnabClient::class, fn (): YnabClient => new YnabClient(
-            config('services.ynab.token'),
+        $this->app->singleton(YnabClientFactory::class, fn (): YnabClientFactory => new YnabClientFactory(
             config('services.ynab.base_url'),
         ));
 

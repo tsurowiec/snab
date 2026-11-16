@@ -89,7 +89,7 @@ class YnabClient
     private function send(string $method, string $path, array $payload = []): array
     {
         if (! $this->isConfigured()) {
-            throw new YnabException('YNAB_TOKEN is not set in .env');
+            throw new YnabException('No YNAB token set — add one in Settings → YNAB.');
         }
 
         try {

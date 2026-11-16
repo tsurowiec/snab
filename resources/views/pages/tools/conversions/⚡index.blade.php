@@ -2,7 +2,6 @@
 
 use App\Services\Conversions\ConversionService;
 use App\Services\Rates\NbpRateService;
-use App\Services\Ynab\YnabClient;
 use App\Services\Ynab\YnabException;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Lazy;
@@ -28,12 +27,9 @@ new #[Title('Conversions')] #[Lazy] class extends Component {
     {
         $conversions = app(ConversionService::class);
         $rates = app(NbpRateService::class);
-        $ynab = app(YnabClient::class);
-
         $this->error = null;
-        $this->configured = $ynab->isConfigured();
-
         $user = Auth::user();
+        $this->configured = $user->hasYnabToken();
         $today = now()->toDateString();
         $rateByCurrency = [];
         $rows = [];
@@ -95,7 +91,11 @@ new #[Title('Conversions')] #[Lazy] class extends Component {
     </div>
 
     @unless ($configured)
-        <flux:callout variant="warning" icon="exclamation-triangle" class="mb-4" heading="{{ __('YNAB_TOKEN is not set in .env') }}" />
+        <flux:callout variant="warning" icon="exclamation-triangle" class="mb-4" :heading="__('No YNAB token set')">
+            <flux:callout.text>
+                <flux:link :href="route('ynab.edit')" wire:navigate>{{ __('Add your personal access token in Settings → YNAB.') }}</flux:link>
+            </flux:callout.text>
+        </flux:callout>
     @endunless
 
     @if ($error)

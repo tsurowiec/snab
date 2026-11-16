@@ -9,15 +9,15 @@ Personal YNAB toolbox built with Laravel 13, Livewire 4 and Flux. It can be inst
 
 ```bash
 composer run setup                 # install deps, create .env + SQLite DB, migrate, build assets
-# put your YNAB personal access token in .env:  YNAB_TOKEN=...
 php artisan snab:user you@example.com   # registration is disabled — create your login
 composer run dev                   # http://localhost:8000
 ```
 
 Then open **Settings → YNAB**:
-1. Pick your budget.
-2. Enable your foreign-currency accounts and set their currencies.
-3. Optionally use **Skip existing** so only new transactions show up.
+1. Paste your YNAB personal access token. It's checked against YNAB, then stored encrypted. Every user has their own.
+2. Pick your budget.
+3. Enable your foreign-currency accounts and set their currencies.
+4. Optionally use **Skip existing** so only new transactions show up.
 
 On a phone, open the site and use **Add to Home Screen** to install it.
 

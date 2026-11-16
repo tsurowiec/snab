@@ -4,11 +4,13 @@ use App\Models\ExchangeRate;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\YnabAccount;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
 beforeEach(function () {
-    $this->alice = User::factory()->create();
-    $this->bob = User::factory()->create();
+    $this->alice = User::factory()->withYnabToken('alice-token')->create();
+    $this->bob = User::factory()->withYnabToken('bob-token')->create();
 
     YnabAccount::factory()->for($this->alice)->create(['name' => 'Alice EUR']);
     $this->bobAccount = YnabAccount::factory()->for($this->bob)->create(['name' => 'Bob EUR']);
@@ -20,7 +22,8 @@ it('scopes every model to the authenticated user', function () {
     $this->actingAs($this->alice);
 
     expect(YnabAccount::pluck('name')->all())->toBe(['Alice EUR'])
-        ->and(Setting::count())->toBe(0)
+        ->and(Setting::pluck('key')->all())->toBe([Setting::YNAB_TOKEN])
+        ->and($this->alice->ynabToken())->toBe('alice-token')
         ->and(ExchangeRate::count())->toBe(0)
         ->and($this->alice->ynabPlanId())->toBe('last-used');
 });
@@ -62,4 +65,17 @@ it('cascades deletes from the user', function () {
     expect(YnabAccount::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0)
         ->and(Setting::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0)
         ->and(ExchangeRate::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0);
+});
+
+it('calls YNAB with each user\'s own token', function () {
+    Livewire::withoutLazyLoading();
+    fakeApis();
+
+    Livewire::actingAs($this->alice)->test('pages::tools.conversions.index');
+    Http::assertSent(fn (Request $r) => $r->hasHeader('Authorization', 'Bearer alice-token'));
+    Http::assertNotSent(fn (Request $r) => $r->hasHeader('Authorization', 'Bearer bob-token'));
+
+    Livewire::withoutLazyLoading(); // applies to a single test() call only
+    Livewire::actingAs($this->bob)->test('pages::tools.conversions.index');
+    Http::assertSent(fn (Request $r) => $r->hasHeader('Authorization', 'Bearer bob-token'));
 });

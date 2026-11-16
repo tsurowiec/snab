@@ -5,6 +5,7 @@ namespace App\Services\Conversions;
 use App\Models\YnabAccount;
 use App\Services\Rates\NbpRateService;
 use App\Services\Ynab\YnabClient;
+use App\Services\Ynab\YnabClientFactory;
 
 /**
  * Converts foreign-currency YNAB transactions to PLN using the NBP mid-rate
@@ -17,7 +18,7 @@ use App\Services\Ynab\YnabClient;
 class ConversionService
 {
     public function __construct(
-        private readonly YnabClient $ynab,
+        private readonly YnabClientFactory $ynab,
         private readonly NbpRateService $rates,
     ) {}
 
@@ -100,7 +101,7 @@ class ConversionService
 
         if (! $dryRun) {
             if ($updates !== []) {
-                $this->ynab->updateTransactions($account->user->ynabPlanId(), $updates);
+                $this->client($account)->updateTransactions($account->user->ynabPlanId(), $updates);
             }
             $account->update(['server_knowledge' => $data['server_knowledge']]);
         }
@@ -135,12 +136,17 @@ class ConversionService
         return filled($memo) ? "{$memo} {$suffix}" : $suffix;
     }
 
+    private function client(YnabAccount $account): YnabClient
+    {
+        return $this->ynab->forUser($account->user);
+    }
+
     /**
      * @return array{transactions: list<array<string, mixed>>, server_knowledge: int}
      */
     private function fetch(YnabAccount $account): array
     {
-        return $this->ynab->transactionsByAccount(
+        return $this->client($account)->transactionsByAccount(
             $account->user->ynabPlanId(),
             $account->ynab_id,
             $account->server_knowledge,

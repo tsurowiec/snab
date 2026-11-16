@@ -9,7 +9,7 @@ use Livewire\Livewire;
 beforeEach(function () {
     Livewire::withoutLazyLoading();
     $this->travelTo('2026-01-20 15:00');
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->withYnabToken()->create();
     $this->actingAs($this->user);
 });
 
@@ -30,6 +30,17 @@ it('renders the page over HTTP', function () {
     fakeApis();
 
     $this->get(route('conversions.index'))->assertOk()->assertSee('Conversions');
+});
+
+it('asks for a token when the user has none', function () {
+    $this->user->setYnabToken(null);
+    YnabAccount::factory()->for($this->user)->create(['name' => 'Revolut']);
+    fakeApis(nbpRates: ['EUR' => ['2026-01-20' => 4.25]]);
+
+    Livewire::test('pages::tools.conversions.index')
+        ->assertSee('No YNAB token set')
+        ->assertSee('0 pending');
+    Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'api.ynab.com'));
 });
 
 it('points to settings when no accounts are configured', function () {

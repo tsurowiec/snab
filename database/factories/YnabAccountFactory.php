@@ -14,7 +14,7 @@ class YnabAccountFactory extends Factory
     public function definition(): array
     {
         return [
-            'user_id' => User::factory(),
+            'user_id' => User::factory()->withYnabToken(),
             'ynab_id' => fake()->uuid(),
             'name' => fake()->words(2, true),
             'currency' => 'EUR',

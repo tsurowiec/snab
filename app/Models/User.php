@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\UserFactory;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
@@ -92,6 +94,37 @@ class User extends Authenticatable implements PasskeyUser
     public function setSetting(string $key, ?string $value): void
     {
         $this->settings()->updateOrCreate(['key' => $key], ['value' => $value]);
+    }
+
+    /** The user's YNAB personal access token (stored encrypted with APP_KEY). */
+    public function ynabToken(): ?string
+    {
+        $encrypted = $this->setting(Setting::YNAB_TOKEN);
+        if ($encrypted === null) {
+            return null;
+        }
+
+        try {
+            return Crypt::decryptString($encrypted);
+        } catch (DecryptException) {
+            return null; // e.g. APP_KEY rotated — the user has to enter the token again
+        }
+    }
+
+    public function setYnabToken(?string $token): void
+    {
+        if (blank($token)) {
+            $this->settings()->where('key', Setting::YNAB_TOKEN)->delete();
+
+            return;
+        }
+
+        $this->setSetting(Setting::YNAB_TOKEN, Crypt::encryptString(trim($token)));
+    }
+
+    public function hasYnabToken(): bool
+    {
+        return $this->ynabToken() !== null;
     }
 
     public function ynabPlanId(): string

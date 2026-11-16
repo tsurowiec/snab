@@ -3,6 +3,7 @@
 use App\Models\Setting;
 use App\Models\YnabAccount;
 use App\Services\Ynab\YnabClient;
+use App\Services\Ynab\YnabClientFactory;
 use App\Services\Ynab\YnabException;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
@@ -11,7 +12,7 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /**
- * GUI replacement for ynab-euro's CLI helpers:
+ * Per-user YNAB token (stored encrypted) plus the GUI replacement for ynab-euro's CLI helpers:
  *  - list-plans    → budget picker
  *  - list-accounts → account table with enable toggle + currency
  *  - init-cache    → "Skip existing transactions" (store current server_knowledge)
@@ -21,6 +22,9 @@ new #[Title('YNAB settings')] class extends Component {
     public const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP', 'CZK', 'HUF', 'SEK', 'NOK', 'DKK', 'JPY', 'CAD', 'AUD', 'UAH', 'RON', 'BGN', 'TRY', 'ISK', 'CNY', 'HKD', 'NZD', 'SGD', 'MXN', 'BRL', 'ZAR', 'KRW', 'INR', 'ILS', 'THB', 'IDR', 'MYR', 'PHP', 'CLP', 'XDR'];
 
     public bool $configured = true;
+
+    /** Only holds a newly typed token until it's saved — the stored token is never sent to the browser. */
+    public string $token = '';
 
     public ?string $error = null;
 
@@ -35,9 +39,9 @@ new #[Title('YNAB settings')] class extends Component {
     /** Form state keyed by YNAB account id: @var array<string, array{enabled: bool, currency: string}> */
     public array $selection = [];
 
-    public function mount(YnabClient $ynab): void
+    public function mount(): void
     {
-        $this->configured = $ynab->isConfigured();
+        $this->configured = Auth::user()->hasYnabToken();
         $this->planId = Auth::user()->ynabPlanId();
 
         if ($this->configured) {
@@ -45,9 +49,46 @@ new #[Title('YNAB settings')] class extends Component {
         }
     }
 
+    private function ynab(): YnabClient
+    {
+        return app(YnabClientFactory::class)->forUser(Auth::user());
+    }
+
+    public function saveToken(): void
+    {
+        $this->validate(['token' => ['required', 'string', 'max:255']]);
+
+        // Verify the token against YNAB before storing it.
+        try {
+            app(YnabClientFactory::class)->withToken(trim($this->token))->plans();
+        } catch (YnabException $e) {
+            $this->addError('token', __('YNAB rejected this token: :message', ['message' => $e->getMessage()]));
+
+            return;
+        }
+
+        Auth::user()->setYnabToken($this->token);
+        $this->token = '';
+        $this->configured = true;
+        $this->loadRemote();
+
+        Flux::toast(variant: 'success', text: __('YNAB token saved.'));
+    }
+
+    public function removeToken(): void
+    {
+        Auth::user()->setYnabToken(null);
+        $this->configured = false;
+        $this->plans = [];
+        $this->remoteAccounts = [];
+        $this->selection = [];
+
+        Flux::toast(text: __('YNAB token removed.'));
+    }
+
     public function loadRemote(): void
     {
-        $ynab = app(YnabClient::class);
+        $ynab = $this->ynab();
         $this->error = null;
 
         try {
@@ -121,7 +162,7 @@ new #[Title('YNAB settings')] class extends Component {
     public function initCache(?int $accountId = null): void
     {
         $user = Auth::user();
-        $ynab = app(YnabClient::class);
+        $ynab = $this->ynab();
 
         $accounts = $user->ynabAccounts()
             ->when($accountId, fn ($q) => $q->whereKey($accountId))
@@ -156,7 +197,7 @@ new #[Title('YNAB settings')] class extends Component {
         $user = Auth::user();
 
         try {
-            $names = collect(app(YnabClient::class)->accounts($user->ynabPlanId()))->pluck('name', 'id');
+            $names = collect($this->ynab()->accounts($user->ynabPlanId()))->pluck('name', 'id');
         } catch (YnabException $e) {
             $this->error = $e->getMessage();
 
@@ -206,11 +247,37 @@ new #[Title('YNAB settings')] class extends Component {
 
     <x-pages::settings.layout :heading="__('YNAB')" :subheading="__('Budget, accounts and caches used by the tools')">
         <div class="flex flex-col gap-10">
-            @unless ($configured)
-                <flux:callout variant="warning" icon="exclamation-triangle" :heading="__('YNAB_TOKEN is not set')">
-                    <flux:callout.text>{{ __('Add your personal access token to .env as YNAB_TOKEN (YNAB → Account settings → Developer settings).') }}</flux:callout.text>
-                </flux:callout>
-            @endunless
+            {{-- Token (per user, stored encrypted) --}}
+            <form wire:submit="saveToken" class="flex flex-col gap-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Personal access token') }}</flux:heading>
+                    <flux:text>
+                        {{ __('Create one in YNAB → Account settings → Developer settings. It is stored encrypted and never shown again.') }}
+                    </flux:text>
+                </div>
+
+                @if ($configured)
+                    <flux:callout variant="success" icon="check-circle" :heading="__('A YNAB token is saved for your account.')" />
+                @else
+                    <flux:callout variant="warning" icon="exclamation-triangle" :heading="__('No YNAB token set')" />
+                @endif
+
+                <flux:input
+                    wire:model="token"
+                    type="password"
+                    viewable
+                    autocomplete="off"
+                    :label="$configured ? __('Replace token') : __('Token')"
+                    data-test="ynab-token-input"
+                />
+
+                <div class="flex gap-2">
+                    <flux:button type="submit" variant="primary">{{ __('Save token') }}</flux:button>
+                    @if ($configured)
+                        <flux:button variant="danger" wire:click="removeToken" wire:confirm="{{ __('Remove your YNAB token?') }}">{{ __('Remove token') }}</flux:button>
+                    @endif
+                </div>
+            </form>
 
             @if ($error)
                 <flux:callout variant="danger" icon="x-circle" :heading="$error">

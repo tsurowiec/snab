@@ -36,7 +36,6 @@ return [
     ],
 
     'ynab' => [
-        'token' => env('YNAB_TOKEN'),
         'base_url' => env('YNAB_BASE_URL', 'https://api.ynab.com/v1'),
     ],
 

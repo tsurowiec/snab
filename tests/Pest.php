@@ -10,7 +10,6 @@ pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->beforeEach(function () {
         Http::preventStrayRequests();
-        config(['services.ynab.token' => 'test-token']);
     })
     ->in('Feature', 'Unit');
 

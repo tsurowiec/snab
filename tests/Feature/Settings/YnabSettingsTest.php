@@ -3,11 +3,12 @@
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\YnabAccount;
-use App\Services\Ynab\YnabClient;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
 beforeEach(function () {
-    $this->user = User::factory()->create();
+    $this->user = User::factory()->withYnabToken()->create();
     $this->actingAs($this->user);
 });
 
@@ -30,11 +31,60 @@ it('renders the YNAB settings page', function () {
         ->assertDontSee('Closed one');
 });
 
-it('warns when YNAB_TOKEN is missing', function () {
-    config(['services.ynab.token' => null]);
-    app()->forgetInstance(YnabClient::class);
+describe('token', function () {
+    it('warns when the user has no token and makes no YNAB calls', function () {
+        $this->user->setYnabToken(null);
+        fakeApis();
 
-    Livewire::test('pages::settings.ynab')->assertSee('YNAB_TOKEN is not set');
+        Livewire::test('pages::settings.ynab')->assertSee('No YNAB token set');
+        Http::assertNothingSent();
+    });
+
+    it('verifies and stores the token encrypted', function () {
+        $this->user->setYnabToken(null);
+        fakeApis(plans: [['id' => 'plan-1', 'name' => 'Home budget']]);
+
+        Livewire::test('pages::settings.ynab')
+            ->set('token', '  new-secret-token ')
+            ->call('saveToken')
+            ->assertHasNoErrors()
+            ->assertSet('token', '')
+            ->assertSet('configured', true)
+            ->assertSee('Home budget');
+
+        $raw = $this->user->settings()->where('key', Setting::YNAB_TOKEN)->value('value');
+        expect($raw)->not->toContain('new-secret-token')
+            ->and($this->user->ynabToken())->toBe('new-secret-token');
+        Http::assertSent(fn (Request $r) => $r->hasHeader('Authorization', 'Bearer new-secret-token'));
+    });
+
+    it('does not store a token YNAB rejects', function () {
+        $this->user->setYnabToken(null);
+        Http::fake(['api.ynab.com/*' => Http::response(['error' => ['id' => '401', 'name' => 'unauthorized', 'detail' => 'Unauthorized']], 401)]);
+
+        Livewire::test('pages::settings.ynab')
+            ->set('token', 'bad-token')
+            ->call('saveToken')
+            ->assertHasErrors('token');
+
+        expect($this->user->hasYnabToken())->toBeFalse();
+    });
+
+    it('never sends the stored token to the browser', function () {
+        fakeApis();
+
+        Livewire::test('pages::settings.ynab')
+            ->assertSet('token', '')
+            ->assertDontSee('test-token');
+    });
+
+    it('removes the token', function () {
+        fakeApis();
+
+        Livewire::test('pages::settings.ynab')->call('removeToken')->assertSet('configured', false);
+
+        expect($this->user->fresh()->hasYnabToken())->toBeFalse();
+    });
 });
 
 it('saves the selected budget for the current user', function () {

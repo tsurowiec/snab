@@ -47,6 +47,14 @@ class UserFactory extends Factory
     }
 
     /**
+     * Give the user a (fake) YNAB personal access token.
+     */
+    public function withYnabToken(string $token = 'test-token'): static
+    {
+        return $this->afterCreating(fn (User $user) => $user->setYnabToken($token));
+    }
+
+    /**
      * Indicate that the model has two-factor authentication configured.
      */
     public function withTwoFactor(): static
