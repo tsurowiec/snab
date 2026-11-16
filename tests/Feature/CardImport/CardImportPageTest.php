@@ -117,6 +117,8 @@ it('lists imported transactions', function () {
 
     Livewire::actingAs($this->user)
         ->test('pages::tools.card-import.index')
+        ->assertSee('Paste a screenshot')
+        ->assertSeeHtml('x-data="cardImportPaste"')
         ->assertSee('Old coffee')
         ->assertSee('-12.00 PLN');
 });

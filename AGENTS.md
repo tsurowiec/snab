@@ -106,6 +106,7 @@ resources/views/pages/
   settings/⚡ynab.blade.php              Settings → YNAB
   settings/⚡ai.blade.php                Settings → AI (Anthropic key)
 resources/js/tools/conversions.js       Alpine component: selection, totals, swipe-to-toggle
+resources/js/tools/card-import.js       Alpine component: paste screenshots (⌘V / paste box / Clipboard API) → $wire.uploadMultiple → extract
 ```
 
 `YnabClientFactory` and `NbpRateService` are singletons bound in `AppServiceProvider` from `config/services.php`.

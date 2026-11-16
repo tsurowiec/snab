@@ -137,8 +137,34 @@ new #[Title('Card import')] class extends Component {
 
     {{-- 1. Upload --}}
     @if ($rows === [])
-        <form wire:submit="extract" class="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-            <flux:input type="file" wire:model="screenshots" multiple accept="image/png,image/jpeg,image/webp,image/gif" :label="__('Screenshots')" data-test="screenshot-input" />
+        <form wire:submit="extract" x-data="cardImportPaste" class="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
+            {{-- Paste: Ctrl/⌘+V anywhere, the box below (phones), or the clipboard button --}}
+            <div class="flex flex-col gap-2">
+                <flux:label>{{ __('Paste a screenshot') }}</flux:label>
+                <textarea
+                    rows="2"
+                    readonly
+                    x-on:input="$el.value = ''"
+                    x-on:focus="$el.removeAttribute('readonly')"
+                    x-on:blur="$el.setAttribute('readonly', '')"
+                    :disabled="busy || {{ $configured ? 'false' : 'true' }}"
+                    placeholder="{{ __('Press Ctrl/⌘+V, or tap here and choose Paste') }}"
+                    class="w-full resize-none rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-3 py-4 text-center text-sm text-zinc-500 placeholder:text-zinc-500 focus:border-accent focus:outline-none dark:border-zinc-600 dark:bg-zinc-800"
+                    data-test="paste-box"
+                ></textarea>
+                <template x-if="canReadClipboard">
+                    <div>
+                        <flux:button size="sm" icon="clipboard" x-on:click="readClipboard()" x-bind:disabled="busy" :disabled="! $configured">
+                            {{ __('Paste from clipboard') }}
+                        </flux:button>
+                    </div>
+                </template>
+                <flux:text x-show="error" x-text="error" class="text-red-600!"></flux:text>
+            </div>
+
+            <flux:separator :text="__('or')" />
+
+            <flux:input type="file" wire:model="screenshots" multiple accept="image/png,image/jpeg,image/webp,image/gif" :label="__('Choose files')" data-test="screenshot-input" />
             <div wire:loading wire:target="screenshots" class="text-sm text-zinc-500">{{ __('Uploading…') }}</div>
 
             <div class="flex items-center gap-3">
