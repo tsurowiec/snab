@@ -2,11 +2,13 @@
 
 namespace App\Services\CardImport;
 
+use Anthropic\Beta\Messages\BetaTextBlock;
 use Anthropic\Client;
 use Anthropic\Core\Exceptions\AnthropicException;
 use Anthropic\Core\Exceptions\AuthenticationException;
-use Anthropic\Messages\TextBlock;
+use App\Models\LlmUsage;
 use App\Models\User;
+use App\Services\Anthropic\UsageRecorder;
 use Carbon\CarbonImmutable;
 use Carbon\Exceptions\InvalidFormatException;
 use Psr\Http\Client\ClientInterface;
@@ -16,7 +18,7 @@ use Psr\Http\Client\ClientInterface;
  */
 class ClaudeTransactionExtractor implements TransactionExtractor
 {
-    public const MODEL = 'claude-opus-5-5';
+    public const MODEL = 'claude-sonnet-5-5';
 
     public const MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
@@ -47,7 +49,10 @@ class ClaudeTransactionExtractor implements TransactionExtractor
         TXT;
 
     /** @param  ClientInterface|null  $transporter  PSR-18 client override (tests) */
-    public function __construct(private readonly ?ClientInterface $transporter = null) {}
+    public function __construct(
+        private readonly UsageRecorder $usage,
+        private readonly ?ClientInterface $transporter = null,
+    ) {}
 
     public function extract(User $user, string $imageBytes, string $mimeType): array
     {
@@ -61,8 +66,12 @@ class ClaudeTransactionExtractor implements TransactionExtractor
         }
 
         try {
-            $message = $this->client($apiKey)->messages->create(
+            // Beta endpoint for server-side fallback: if Sonnet declines on policy grounds,
+            // Anthropic retries on its default fallback model within the same call.
+            $message = $this->client($apiKey)->beta->messages->create(
                 model: self::MODEL,
+                betas: ['server-side-fallback-2026-07-01'],
+                fallbacks: 'default',
                 maxTokens: 16000,
                 system: self::SYSTEM,
                 outputConfig: [
@@ -83,6 +92,9 @@ class ClaudeTransactionExtractor implements TransactionExtractor
             throw new ExtractionException(__('Claude request failed: :message', ['message' => $e->getMessage()]), previous: $e);
         }
 
+        // Billed even when the reply is unusable, so record before checking it.
+        $this->usage->record($user, LlmUsage::FEATURE_CARD_IMPORT, $message);
+
         if ($message->stopReason === 'refusal') {
             throw new ExtractionException(__('Claude declined to read this image.'));
         }
@@ -91,7 +103,7 @@ class ClaudeTransactionExtractor implements TransactionExtractor
         }
 
         foreach ($message->content as $block) {
-            if ($block instanceof TextBlock) {
+            if ($block instanceof BetaTextBlock) {
                 $data = json_decode($block->text, true);
                 if (! is_array($data)) {
                     throw new ExtractionException(__('Claude returned invalid JSON.'));

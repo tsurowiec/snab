@@ -87,6 +87,14 @@ class User extends Authenticatable implements PasskeyUser
     }
 
     /**
+     * @return HasMany<LlmUsage, $this>
+     */
+    public function llmUsages(): HasMany
+    {
+        return $this->hasMany(LlmUsage::class)->withoutGlobalScope('user');
+    }
+
+    /**
      * @return HasMany<Setting, $this>
      */
     public function settings(): HasMany

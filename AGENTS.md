@@ -83,6 +83,7 @@ app/
     YnabAccount.php                enabled foreign-currency accounts (+ server_knowledge for delta sync)
     ExchangeRate.php               cached NBP rates
     CardTransaction.php            card transactions from screenshots; hashFor() = dedup key
+    LlmUsage.php                   one row per Claude call: tokens + cost_micros (USD × 1e6)
     Setting.php                    per-user key/value
   Services/
     Ynab/YnabClient.php            YNAB REST wrapper (Http facade), one per token; throws YnabException
@@ -94,10 +95,12 @@ app/
       PendingTransaction.php, ConversionResult.php   DTOs
     CardImport/
       TransactionExtractor.php     interface (bound to ClaudeTransactionExtractor; tests bind a fake)
-      ClaudeTransactionExtractor.php  screenshot → Claude (claude-opus-5-5, strict JSON schema) → parse()
+      ClaudeTransactionExtractor.php  screenshot → Claude (claude-sonnet-5-5, beta endpoint + server-side fallback, strict JSON schema) → parse()
       ExtractedTransaction.php     DTO, hash()
       CardImportService.php        preview() flags duplicates, store() inserts new rows (insertOrIgnore)
     Anthropic/AnthropicKeyVerifier.php   checks a key (models list) before it's saved
+    Anthropic/Pricing.php          list prices per model ($/MTok) → cost in micro-dollars
+    Anthropic/UsageRecorder.php    stores an llm_usages row per Claude response (prices fallback iterations per model)
   Console/Commands/CreateUser.php  snab:user
 resources/views/pages/
   tools/conversions/⚡index.blade.php   account list (route conversions.index, PWA start_url)
@@ -143,6 +146,15 @@ Livewire components resolve services with `app(...)` and catch `YnabException` t
 - Declined and reverted rows are shown in the review but not selected by default.
 - Screenshots are never stored; only the extracted rows are. `status` is `new`. It will become `recorded` once a
   row has been pushed to YNAB, which is the next step, and `ynab_transaction_id` is reserved for that.
+
+## Claude usage tracking
+
+- **Every** Claude call goes through `UsageRecorder::record()` right after the response, before stop_reason or
+  parse checks, because refusals and truncated replies are billed too.
+- Costs are estimates based on list prices in `Pricing::MODELS`. Update that table when prices or models change;
+  an unknown model gets `cost_micros = null`, which is shown as "—".
+- Settings → AI shows this month's total, the all-time total and the last 10 calls. Card import shows the cost
+  of each extraction.
 
 ## Adding a tool
 

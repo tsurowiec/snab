@@ -2,6 +2,7 @@
 
 use App\Models\CardTransaction;
 use App\Models\ExchangeRate;
+use App\Models\LlmUsage;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\YnabAccount;
@@ -18,6 +19,7 @@ beforeEach(function () {
     $this->bob->setSetting(Setting::YNAB_PLAN_ID, 'bob-plan');
     $this->bob->exchangeRates()->create(['currency' => 'EUR', 'date' => '2026-01-15', 'rate' => 4.2, 'rate_date' => '2026-01-15']);
     CardTransaction::factory()->for($this->bob)->create(['description' => 'Bob coffee']);
+    LlmUsage::factory()->for($this->bob)->create();
 });
 
 it('scopes every model to the authenticated user', function () {
@@ -28,6 +30,7 @@ it('scopes every model to the authenticated user', function () {
         ->and($this->alice->ynabToken())->toBe('alice-token')
         ->and(ExchangeRate::count())->toBe(0)
         ->and(CardTransaction::count())->toBe(0)
+        ->and(LlmUsage::count())->toBe(0)
         ->and($this->alice->ynabPlanId())->toBe('last-used');
 });
 
@@ -68,7 +71,8 @@ it('cascades deletes from the user', function () {
     expect(YnabAccount::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0)
         ->and(Setting::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0)
         ->and(ExchangeRate::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0)
-        ->and(CardTransaction::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0);
+        ->and(CardTransaction::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0)
+        ->and(LlmUsage::withoutGlobalScopes()->where('user_id', $this->bob->id)->count())->toBe(0);
 });
 
 it('calls YNAB with each user\'s own token', function () {

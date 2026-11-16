@@ -21,6 +21,7 @@ function fakeExtractor(array|ExtractionException $result): void
         public function extract(User $user, string $imageBytes, string $mimeType): array
         {
             $this->calls++;
+            $user->llmUsages()->create(['feature' => 'card_import', 'model' => 'claude-sonnet-5-5', 'input_tokens' => 3000, 'output_tokens' => 1000, 'cost_micros' => 16000]);
             if ($this->result instanceof ExtractionException) {
                 throw $this->result;
             }
@@ -63,7 +64,9 @@ it('extracts, reviews and saves only the selected new rows', function () {
         ->assertSee('-1 234.56 PLN')
         ->assertSee('(-285.00 EUR)')
         ->assertSee('declined')
-        ->assertSee('Save 2 transactions');
+        ->assertSee('Save 2 transactions')
+        ->assertSee('Claude read 1 screenshot')
+        ->assertSee('$0.0160');
 
     expect(array_column($page->get('rows'), 'selected'))->toBe([true, true, false]);
 

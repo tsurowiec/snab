@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\CardTransaction;
+use App\Models\LlmUsage;
 use App\Services\CardImport\CardImportService;
 use App\Services\CardImport\ClaudeTransactionExtractor;
 use App\Services\CardImport\ExtractedTransaction;
@@ -34,6 +35,9 @@ new #[Title('Card import')] class extends Component {
     /** @var list<string> */
     public array $extractErrors = [];
 
+    /** Claude usage of the last extraction (all screenshots, including failed ones). @var array{calls: int, inputTokens: int, outputTokens: int, costMicros: int|null}|null */
+    public ?array $lastUsage = null;
+
     public bool $configured = false;
 
     public function mount(): void
@@ -49,6 +53,7 @@ new #[Title('Card import')] class extends Component {
         $extractor = app(TransactionExtractor::class);
         $this->extractErrors = [];
         $found = [];
+        $usageBefore = (int) $user->llmUsages()->max('id');
 
         foreach ($this->screenshots as $file) {
             try {
@@ -81,6 +86,7 @@ new #[Title('Card import')] class extends Component {
         );
 
         $this->screenshots = [];
+        $this->lastUsage = $this->usageSince($usageBefore);
 
         if ($found === [] && $this->extractErrors === []) {
             $this->extractErrors[] = __('No transactions found in the screenshot.');
@@ -104,6 +110,22 @@ new #[Title('Card import')] class extends Component {
             'saved' => $result['saved'],
             'skipped' => $result['skipped'] + $duplicates,
         ]));
+    }
+
+    /** @return array{calls: int, inputTokens: int, outputTokens: int, costMicros: int|null}|null */
+    private function usageSince(int $id): ?array
+    {
+        $usages = Auth::user()->llmUsages()->where('id', '>', $id)->get();
+        if ($usages->isEmpty()) {
+            return null;
+        }
+
+        return [
+            'calls' => $usages->count(),
+            'inputTokens' => (int) $usages->sum(fn (LlmUsage $u): int => $u->input_tokens + $u->cache_creation_input_tokens + $u->cache_read_input_tokens),
+            'outputTokens' => (int) $usages->sum('output_tokens'),
+            'costMicros' => $usages->contains(fn (LlmUsage $u): bool => $u->cost_micros === null) ? null : (int) $usages->sum('cost_micros'),
+        ];
     }
 
     public function discard(): void
@@ -181,6 +203,14 @@ new #[Title('Card import')] class extends Component {
                 <span wire:loading wire:target="extract" class="text-sm text-zinc-500">{{ __('Claude is reading the screenshot…') }}</span>
             </div>
         </form>
+    @endif
+
+    @if ($lastUsage)
+        <flux:text class="text-sm" data-test="extraction-cost">
+            {{ trans_choice('{1} Claude read 1 screenshot|[2,*] Claude read :count screenshots', $lastUsage['calls'], ['count' => $lastUsage['calls']]) }}
+            · {{ number_format($lastUsage['inputTokens'], 0, '.', ' ') }} {{ __('in') }} / {{ number_format($lastUsage['outputTokens'], 0, '.', ' ') }} {{ __('out tokens') }}
+            · <strong>{{ LlmUsage::formatCost($lastUsage['costMicros']) }}</strong>
+        </flux:text>
     @endif
 
     @foreach ($extractErrors as $message)
