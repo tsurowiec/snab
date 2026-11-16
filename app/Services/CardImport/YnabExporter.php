@@ -77,17 +77,12 @@ class YnabExporter
     /** @return array<string, mixed> */
     public static function payload(CardTransaction $t, string $accountId): array
     {
-        $memo = $t->occurred_at->format('H:i');
-        if ($t->original_amount !== null && $t->original_currency !== null) {
-            $memo .= ' · '.number_format($t->original_amount / 1000, 2, '.', '').' '.$t->original_currency;
-        }
-
         return [
             'account_id' => $accountId,
             'date' => $t->occurred_at->toDateString(),
             'amount' => $t->amount,
             'payee_name' => Str::limit($t->description, 200, ''),
-            'memo' => $memo,
+            'memo' => null,
             'cleared' => 'uncleared',
             'approved' => false,
             'import_id' => $t->importId(),

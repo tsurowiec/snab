@@ -150,7 +150,7 @@ Livewire components resolve services with `app(...)` and catch `YnabException` t
   - **When:** Save stores the rows and then calls `YnabExporter::export()`, but only if the user has a YNAB token
     and a target account (`Setting::CARD_IMPORT_YNAB_ACCOUNT`, chosen in Settings → YNAB).
   - **What it sends:** every `status = new` row, as an unapproved and uncleared transaction. Payee = description,
-    memo = `HH:MM` plus the original amount if there is one.
+    memo left empty.
   - **Dedup:** `import_id = "SNAB:" + first 31 chars of the hash`. YNAB refuses duplicates per account; its
     `duplicate_import_ids` are marked `recorded` too.
   - **After sending:** rows become `recorded`, with `ynab_transaction_id` set.

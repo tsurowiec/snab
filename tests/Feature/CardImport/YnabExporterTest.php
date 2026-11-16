@@ -32,7 +32,7 @@ it('creates unapproved, uncleared YNAB transactions with an import id', function
             'date' => '2026-11-15',
             'amount' => -1234560,
             'payee_name' => 'Booking.com',
-            'memo' => '14:32 · -285.00 EUR',
+            'memo' => null,
             'cleared' => 'uncleared',
             'approved' => false,
             'import_id' => $tx->importId(),
