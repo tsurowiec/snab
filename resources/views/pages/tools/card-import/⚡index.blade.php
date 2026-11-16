@@ -62,6 +62,13 @@ new #[Title('Card import')] class extends Component {
             }
         }
 
+        // Overlapping screenshots (or the same image twice) yield identical rows — keep one of each.
+        $unique = [];
+        foreach ($found as $row) {
+            $unique[$row->hash()] ??= $row;
+        }
+        $found = array_values($unique);
+
         usort($found, fn (ExtractedTransaction $a, ExtractedTransaction $b): int => $b->occurredAt <=> $a->occurredAt);
 
         $this->rows = array_map(
@@ -137,7 +144,7 @@ new #[Title('Card import')] class extends Component {
 
     {{-- 1. Upload --}}
     @if ($rows === [])
-        <form wire:submit="extract" x-data="cardImportPaste" class="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
+        <form wire:submit="extract" x-data="cardImportPaste" x-on:paste.window="handlePaste($event)" class="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
             {{-- Paste: Ctrl/⌘+V anywhere, the box below (phones), or the clipboard button --}}
             <div class="flex flex-col gap-2">
                 <flux:label>{{ __('Paste a screenshot') }}</flux:label>

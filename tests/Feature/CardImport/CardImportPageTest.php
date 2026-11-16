@@ -122,3 +122,30 @@ it('lists imported transactions', function () {
         ->assertSee('Old coffee')
         ->assertSee('-12.00 PLN');
 });
+
+it('shows each transaction once when screenshots overlap', function () {
+    fakeExtractor(screenshotRows());
+
+    $page = Livewire::actingAs($this->user)
+        ->test('pages::tools.card-import.index')
+        ->set('screenshots', [UploadedFile::fake()->image('a.png'), UploadedFile::fake()->image('b.png')])
+        ->call('extract');
+
+    expect($page->get('rows'))->toHaveCount(3)
+        ->and(array_column($page->get('rows'), 'duplicate'))->toBe([false, false, false]);
+});
+
+it('starts each extraction with no leftover screenshots', function () {
+    fakeExtractor(screenshotRows());
+
+    Livewire::actingAs($this->user)
+        ->test('pages::tools.card-import.index')
+        ->set('screenshots', [UploadedFile::fake()->image('a.png')])
+        ->call('extract')
+        ->assertSet('screenshots', [])
+        ->call('save')
+        ->set('screenshots', [UploadedFile::fake()->image('b.png')])
+        ->call('extract')
+        ->assertSee('already imported')
+        ->tap(fn ($page) => expect($page->get('rows'))->toHaveCount(3));
+});

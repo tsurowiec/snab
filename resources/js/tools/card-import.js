@@ -3,21 +3,13 @@
  * - Ctrl/⌘+V anywhere on the page (desktop)
  * - the paste box (iOS/Android only offer "Paste" inside an editable field)
  * - "Paste from clipboard" button via the async Clipboard API (secure contexts only)
- * Pasted images are uploaded into the Livewire `screenshots` property, then extraction starts.
+ * Pasted images replace the Livewire `screenshots` property (append = false), then extraction starts.
+ * The window paste listener is bound with x-on:paste.window in the view so Alpine removes it with the form.
  */
 export default () => ({
     busy: false,
     error: null,
     canReadClipboard: window.isSecureContext && !!navigator.clipboard?.read,
-
-    init() {
-        this.onPaste = (event) => this.handlePaste(event);
-        window.addEventListener('paste', this.onPaste);
-    },
-
-    destroy() {
-        window.removeEventListener('paste', this.onPaste);
-    },
 
     handlePaste(event) {
         const files = [...(event.clipboardData?.files ?? [])].filter((f) => f.type.startsWith('image/'));
@@ -66,6 +58,11 @@ export default () => ({
                 this.busy = false;
                 this.error = 'Upload failed — is the image larger than 5 MB?';
             },
+            () => {},
+            () => {
+                this.busy = false;
+            },
+            false, // replace, don't append to previously uploaded screenshots
         );
     },
 });
