@@ -11,7 +11,7 @@ Guidance for AI coding agents (and humans) working in this repository.
 
 ## Stack
 
-- Laravel 13, PHP 8.3+, SQLite (`database/database.sqlite`)
+- Laravel 13, PHP 8.4.1+ (CI and dev run 8.5), SQLite (`database/database.sqlite`)
 - Livewire 4 single-file components + Flux UI + Tailwind 4 (Laravel Livewire starter kit)
 - Fortify auth: login, password reset, 2FA, passkeys, password confirmation. **Registration and email verification are disabled.**
 - Pest 5 for tests, Pint for style, Larastan (level 7) for types
