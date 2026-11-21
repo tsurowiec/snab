@@ -209,3 +209,20 @@ describe('card import account', function () {
         expect($user->setting(Setting::CARD_IMPORT_YNAB_ACCOUNT))->toBe('acc-revolut');
     });
 });
+
+describe('alior account', function () {
+    it('saves an account from the budget and rejects unknown ids', function () {
+        fakeApis(accounts: [['id' => 'acc-alior', 'name' => 'Alior', 'balance' => 0, 'type' => 'checking', 'closed' => false, 'deleted' => false]]);
+        $user = User::factory()->withYnabToken()->create();
+        Livewire::actingAs($user)
+            ->test('pages::settings.ynab')
+            ->set('aliorAccountId', 'nope')
+            ->call('saveAliorAccount')
+            ->assertHasErrors('aliorAccountId')
+            ->set('aliorAccountId', 'acc-alior')
+            ->call('saveAliorAccount')
+            ->assertHasNoErrors();
+
+        expect($user->setting(Setting::ALIOR_YNAB_ACCOUNT))->toBe('acc-alior');
+    });
+});

@@ -25,6 +25,9 @@
                     <flux:sidebar.item icon="camera" :href="route('card-import.index')" :current="request()->routeIs('card-import.*')" wire:navigate>
                         {{ __('Card import') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="pencil-square" :href="route('alior-payees.index')" :current="request()->routeIs('alior-payees.*')" wire:navigate>
+                        {{ __('Alior payees') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

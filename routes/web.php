@@ -11,6 +11,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('conversions', 'pages::tools.conversions.index')->name('conversions.index');
     Route::livewire('conversions/{account}', 'pages::tools.conversions.show')->name('conversions.show');
     Route::livewire('card-import', 'pages::tools.card-import.index')->name('card-import.index');
+    Route::livewire('alior-payees', 'pages::tools.alior-payees.index')->name('alior-payees.index');
 });
 
 require __DIR__.'/settings.php';

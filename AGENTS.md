@@ -8,6 +8,8 @@ Guidance for AI coding agents (and humans) working in this repository.
   transactions to PLN using NBP exchange rates.
 - **Card import** reads Revolut credit-card transactions from screenshots with Claude (Anthropic PHP SDK). It stores
   each one once and sends it to a YNAB account.
+- **Alior payees** fixes the payees that Alior's own bank sync gets wrong ("Transakcja kartą", another merchant). Claude reads
+  Alior screenshots, the rows are matched to YNAB by amount + date, and the payees are renamed. Transactions missing from YNAB are added.
 
 ## Stack
 
@@ -99,6 +101,12 @@ app/
       ExtractedTransaction.php     DTO, hash()
       CardImportService.php        preview() flags duplicates, store() inserts new rows (insertOrIgnore)
       YnabExporter.php             export(): POSTs status=new rows to the chosen YNAB account and marks them recorded
+    AliorPayees/
+      PayeeExtractor.php           interface (bound to ClaudePayeeExtractor; tests bind a fake)
+      ClaudePayeeExtractor.php     Alior screenshot → {date, merchant, amount} → parse()
+      AliorRow.php                 DTO, normalize(), importId()
+      AliorPayeeService.php        preview() matches to YNAB, apply() PATCHes payees + POSTs missing rows
+    Anthropic/ScreenshotReader.php shared Claude screenshot call (beta + fallback, strict schema, usage, errors)
     Anthropic/AnthropicKeyVerifier.php   checks a key (models list) before it's saved
     Anthropic/Pricing.php          list prices per model ($/MTok) → cost in micro-dollars
     Anthropic/UsageRecorder.php    stores an llm_usages row per Claude response (prices fallback iterations per model)
@@ -107,6 +115,7 @@ resources/views/pages/
   tools/conversions/⚡index.blade.php   account list (route conversions.index)
   tools/conversions/⚡show.blade.php    transaction picker + confirm modal (route conversions.show)
   tools/card-import/⚡index.blade.php   upload → review → save, plus the imported list
+  tools/alior-payees/⚡index.blade.php  upload → review (rename / add / OK) → apply, stateless
   settings/⚡ynab.blade.php              Settings → YNAB
   settings/⚡ai.blade.php                Settings → AI (Anthropic key)
 resources/js/tools/conversions.js       Alpine component: selection, totals, swipe-to-toggle
@@ -158,6 +167,29 @@ Livewire components resolve services with `app(...)` and catch `YnabException` t
     `duplicate_import_ids` are marked `recorded` too.
   - **After sending:** rows become `recorded`, with `ynab_transaction_id` set.
   - **On failure:** rows stay `new`, and the page shows the error with "Retry sending" and "Send N to YNAB".
+
+## Alior payees: domain rules
+
+- **Stateless**: no table. Every review is checked against live YNAB, so re-running is safe.
+- **Target account**: `Setting::ALIOR_YNAB_ACCOUNT`, chosen in Settings → YNAB. Transactions are fetched with
+  `since_date` = earliest screenshot date − 3 days.
+- **Not matched against**: deleted transactions, transfers, and the unapproved half of a match.
+- **Matching** is one-to-one, by **equal amount**:
+  - pass 1 takes the exact date (preferring a transaction whose payee already matches);
+  - pass 2 takes the closest date within ±3 days (`DATE_TOLERANCE_DAYS`), shown as "YNAB date …";
+  - a fallback never takes a transaction that another row matches exactly.
+- **Actions**:
+  - `rename`: the payee differs (normalized: lowercased, whitespace collapsed);
+  - `ok`: same payee, not selectable;
+  - `create`: no match.
+- **Rename** PATCHes only `payee_id: null` + `payee_name`. YNAB resolves `payee_name` only when `payee_id` is null.
+  Memo, approval and cleared are untouched.
+- **Create**:
+  - The new transaction is unapproved, uncleared, with an empty memo.
+  - `import_id = "SNAB:A:" + first 29 chars of sha256(date|amount|normalized merchant)`. A repeated identical row gets a `:N` suffix.
+  - YNAB's `duplicate_import_ids` are reported as "already in YNAB".
+- **Overlapping screenshots**: each distinct row is kept as many times as the screenshot with the most copies of it shows it,
+  so two equal purchases on one day survive.
 
 ## Claude usage tracking
 

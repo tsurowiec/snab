@@ -3,6 +3,8 @@
 use Anthropic\Client;
 use App\Models\LlmUsage;
 use App\Models\User;
+use App\Services\AliorPayees\ClaudePayeeExtractor;
+use App\Services\Anthropic\ScreenshotReader;
 use App\Services\Anthropic\UsageRecorder;
 use App\Services\CardImport\ClaudeTransactionExtractor;
 use App\Services\CardImport\ExtractionException;
@@ -130,4 +132,23 @@ it('prices each model separately after a fallback', function () {
     $usage = $user->llmUsages()->sole();
     expect($usage->model)->toBe('claude-sonnet-5')
         ->and($usage->cost_micros)->toBe(2000 * 2 + 100 * 10 + 2000 * 2 + 500 * 10);
+});
+
+it('reads Alior screenshots with their own prompt and records usage under alior_payees', function () {
+    $history = [];
+    $stack = HandlerStack::create(new MockHandler([claudeMessage(json_encode(['transactions' => [
+        ['date' => '2026-11-15', 'merchant' => 'Lidl', 'amount' => '-42,50'],
+    ]]))]));
+    $stack->push(Middleware::history($history));
+    $extractor = new ClaudePayeeExtractor(new ScreenshotReader(app(UsageRecorder::class), new Guzzle(['handler' => $stack, 'http_errors' => false])));
+    $user = User::factory()->withAnthropicKey()->create();
+
+    $rows = $extractor->extract($user, 'PNG', 'image/png');
+    $body = json_decode((string) $history[0]['request']->getBody(), true);
+
+    expect($rows[0]->merchant)->toBe('Lidl')
+        ->and($rows[0]->amount)->toBe(-42500)
+        ->and($body['system'])->toContain('Alior')
+        ->and($body['output_config']['format']['schema']['properties']['transactions']['items']['required'])->toBe(['date', 'merchant', 'amount'])
+        ->and($user->llmUsages()->sole()->feature)->toBe(LlmUsage::FEATURE_ALIOR_PAYEES);
 });

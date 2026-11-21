@@ -42,11 +42,15 @@ new #[Title('YNAB settings')] class extends Component {
     /** YNAB account that Card import sends transactions to ('' = not chosen). */
     public string $cardImportAccountId = '';
 
+    /** YNAB account that Alior payees works on ('' = not chosen). */
+    public string $aliorAccountId = '';
+
     public function mount(): void
     {
         $this->configured = Auth::user()->hasYnabToken();
         $this->planId = Auth::user()->ynabPlanId();
         $this->cardImportAccountId = (string) Auth::user()->setting(Setting::CARD_IMPORT_YNAB_ACCOUNT);
+        $this->aliorAccountId = (string) Auth::user()->setting(Setting::ALIOR_YNAB_ACCOUNT);
 
         if ($this->configured) {
             $this->loadRemote();
@@ -149,6 +153,20 @@ new #[Title('YNAB settings')] class extends Component {
         }
 
         Flux::toast(variant: 'success', text: __('Card import account saved.'));
+    }
+
+    public function saveAliorAccount(): void
+    {
+        $this->validate(['aliorAccountId' => ['nullable', 'string', 'in:'.implode(',', array_column($this->remoteAccounts, 'id'))]]);
+
+        $user = Auth::user();
+        if ($this->aliorAccountId === '') {
+            $user->settings()->where('key', Setting::ALIOR_YNAB_ACCOUNT)->delete();
+        } else {
+            $user->setSetting(Setting::ALIOR_YNAB_ACCOUNT, $this->aliorAccountId);
+        }
+
+        Flux::toast(variant: 'success', text: __('Alior account saved.'));
     }
 
     public function saveAccounts(): void
@@ -327,6 +345,23 @@ new #[Title('YNAB settings')] class extends Component {
                 </div>
                 <flux:select wire:model="cardImportAccountId" :label="__('YNAB account')" data-test="card-import-account-select">
                     <flux:select.option value="">{{ __('— Not sent to YNAB —') }}</flux:select.option>
+                    @foreach ($remoteAccounts as $account)
+                        <flux:select.option :value="$account['id']">{{ $account['name'] }} ({{ $account['type'] }})</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <div>
+                    <flux:button type="submit" variant="primary" :disabled="! $configured">{{ __('Save account') }}</flux:button>
+                </div>
+            </form>
+
+            {{-- Alior payees account --}}
+            <form wire:submit="saveAliorAccount" class="flex flex-col gap-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Alior account') }}</flux:heading>
+                    <flux:text>{{ __('Alior payees fixes payees in this account and adds the transactions it is missing.') }}</flux:text>
+                </div>
+                <flux:select wire:model="aliorAccountId" :label="__('YNAB account')" data-test="alior-account-select">
+                    <flux:select.option value="">{{ __('— Not chosen —') }}</flux:select.option>
                     @foreach ($remoteAccounts as $account)
                         <flux:select.option :value="$account['id']">{{ $account['name'] }} ({{ $account['type'] }})</flux:select.option>
                     @endforeach

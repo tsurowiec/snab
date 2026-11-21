@@ -35,6 +35,8 @@ class LlmUsage extends Model
 
     public const FEATURE_CARD_IMPORT = 'card_import';
 
+    public const FEATURE_ALIOR_PAYEES = 'alior_payees';
+
     protected function casts(): array
     {
         return [

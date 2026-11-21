@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\AliorPayees\ClaudePayeeExtractor;
+use App\Services\AliorPayees\PayeeExtractor;
 use App\Services\CardImport\ClaudeTransactionExtractor;
 use App\Services\CardImport\TransactionExtractor;
 use App\Services\Rates\NbpRateService;
@@ -28,6 +30,7 @@ class AppServiceProvider extends ServiceProvider
         ));
 
         $this->app->bind(TransactionExtractor::class, ClaudeTransactionExtractor::class);
+        $this->app->bind(PayeeExtractor::class, ClaudePayeeExtractor::class);
     }
 
     /**

@@ -2,12 +2,10 @@
 
 namespace App\Services\CardImport;
 
-use Anthropic\Beta\Messages\BetaTextBlock;
 use Anthropic\Client;
-use Anthropic\Core\Exceptions\AnthropicException;
-use Anthropic\Core\Exceptions\AuthenticationException;
 use App\Models\LlmUsage;
 use App\Models\User;
+use App\Services\Anthropic\ScreenshotReader;
 use App\Services\Anthropic\UsageRecorder;
 use Carbon\CarbonImmutable;
 use Carbon\Exceptions\InvalidFormatException;
@@ -18,9 +16,9 @@ use Psr\Http\Client\ClientInterface;
  */
 class ClaudeTransactionExtractor implements TransactionExtractor
 {
-    public const MODEL = 'claude-sonnet-5-5';
+    public const MODEL = ScreenshotReader::MODEL;
 
-    public const MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    public const MIME_TYPES = ScreenshotReader::MIME_TYPES;
 
     private const SYSTEM = <<<'TXT'
         You read screenshots of the Revolut app's transaction list for a credit card and return the transactions as JSON.
@@ -50,80 +48,30 @@ class ClaudeTransactionExtractor implements TransactionExtractor
         - If the image is not a Revolut transaction list, return an empty list.
         TXT;
 
+    private readonly ScreenshotReader $reader;
+
     /** @param  ClientInterface|null  $transporter  PSR-18 client override (tests) */
-    public function __construct(
-        private readonly UsageRecorder $usage,
-        private readonly ?ClientInterface $transporter = null,
-    ) {}
+    public function __construct(UsageRecorder $usage, ?ClientInterface $transporter = null)
+    {
+        $this->reader = new ScreenshotReader($usage, $transporter);
+    }
 
     public function extract(User $user, string $imageBytes, string $mimeType): array
     {
-        $apiKey = $user->anthropicApiKey();
-        if ($apiKey === null) {
-            throw new ExtractionException(__('No Anthropic API key — add one in Settings → AI.'));
-        }
-
-        if (! in_array($mimeType, self::MIME_TYPES, true)) {
-            throw new ExtractionException(__('Unsupported image type :type.', ['type' => $mimeType]));
-        }
-
-        try {
-            // Beta endpoint for server-side fallback: if Sonnet declines on policy grounds,
-            // Anthropic retries on its default fallback model within the same call.
-            $message = $this->client($apiKey)->beta->messages->create(
-                model: self::MODEL,
-                betas: ['server-side-fallback-2026-07-01'],
-                fallbacks: 'default',
-                maxTokens: 16000,
-                system: self::SYSTEM,
-                outputConfig: [
-                    'effort' => 'medium',
-                    'format' => ['type' => 'json_schema', 'schema' => self::schema()],
-                ],
-                messages: [[
-                    'role' => 'user',
-                    'content' => [
-                        ['type' => 'image', 'source' => ['type' => 'base64', 'mediaType' => $mimeType, 'data' => base64_encode($imageBytes)]],
-                        ['type' => 'text', 'text' => 'Today is '.CarbonImmutable::now()->format('l, Y-m-d').'. Extract the transactions.'],
-                    ],
-                ]],
-            );
-        } catch (AuthenticationException) {
-            throw new ExtractionException(__('Anthropic rejected the API key — check Settings → AI.'));
-        } catch (AnthropicException $e) {
-            throw new ExtractionException(__('Claude request failed: :message', ['message' => $e->getMessage()]), previous: $e);
-        }
-
-        // Billed even when the reply is unusable, so record before checking it.
-        $this->usage->record($user, LlmUsage::FEATURE_CARD_IMPORT, $message);
-
-        if ($message->stopReason === 'refusal') {
-            throw new ExtractionException(__('Claude declined to read this image.'));
-        }
-        if ($message->stopReason === 'max_tokens') {
-            throw new ExtractionException(__('The response was cut off — try a smaller screenshot.'));
-        }
-
-        foreach ($message->content as $block) {
-            if ($block instanceof BetaTextBlock) {
-                $data = json_decode($block->text, true);
-                if (! is_array($data)) {
-                    throw new ExtractionException(__('Claude returned invalid JSON.'));
-                }
-
-                return self::parse($data);
-            }
-        }
-
-        throw new ExtractionException(__('Claude returned no transactions.'));
+        return self::parse($this->reader->read(
+            $user,
+            LlmUsage::FEATURE_CARD_IMPORT,
+            self::SYSTEM,
+            'Today is '.CarbonImmutable::now()->format('l, Y-m-d').'. Extract the transactions.',
+            self::schema(),
+            $imageBytes,
+            $mimeType,
+        ));
     }
 
-    /** Only pass options that are set: a null `transporter` would override the SDK's auto-discovered HTTP client. */
     public function client(string $apiKey): Client
     {
-        $options = $this->transporter === null ? null : ['transporter' => $this->transporter, 'maxRetries' => 0];
-
-        return new Client(apiKey: $apiKey, requestOptions: $options);
+        return $this->reader->client($apiKey);
     }
 
     /**
@@ -147,7 +95,7 @@ class ClaudeTransactionExtractor implements TransactionExtractor
             } catch (InvalidFormatException) {
                 continue;
             }
-            $amount = self::milliunits($row['amount'] ?? null);
+            $amount = ScreenshotReader::milliunits($row['amount'] ?? null);
             $merchant = trim((string) ($row['merchant'] ?? ''));
             $currency = strtoupper(trim((string) ($row['currency'] ?? '')));
 
@@ -155,7 +103,7 @@ class ClaudeTransactionExtractor implements TransactionExtractor
                 continue;
             }
 
-            $originalAmount = self::milliunits($row['original_amount'] ?? null);
+            $originalAmount = ScreenshotReader::milliunits($row['original_amount'] ?? null);
             $originalCurrency = is_string($row['original_currency'] ?? null) ? strtoupper(trim($row['original_currency'])) : null;
 
             // The card is billed in PLN: if the model put the PLN amount in the "original" slot, swap them back.
@@ -176,22 +124,6 @@ class ClaudeTransactionExtractor implements TransactionExtractor
         }
 
         return $result;
-    }
-
-    /** "-1 234,50" / "-1234.50" / -12.5 → milliunits, or null if not a number. */
-    private static function milliunits(mixed $value): ?int
-    {
-        if (is_int($value) || is_float($value)) {
-            return (int) round($value * 1000);
-        }
-        if (! is_string($value)) {
-            return null;
-        }
-
-        $clean = str_replace([' ', "\u{00A0}", "\u{2212}"], ['', '', '-'], trim($value));
-        $clean = str_replace(',', '.', $clean);
-
-        return is_numeric($clean) ? (int) round((float) $clean * 1000) : null;
     }
 
     /** @return array<string, mixed> */

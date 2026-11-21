@@ -27,6 +27,9 @@ class Setting extends Model
     /** YNAB account id that Card import sends transactions to. */
     public const CARD_IMPORT_YNAB_ACCOUNT = 'card_import_ynab_account_id';
 
+    /** YNAB account that Alior payees fixes payees in (and adds missing transactions to). */
+    public const ALIOR_YNAB_ACCOUNT = 'alior_ynab_account_id';
+
     /** Stored encrypted — use $user->ynabToken() / $user->setYnabToken(). */
     public const YNAB_TOKEN = 'ynab_token';
 

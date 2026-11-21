@@ -65,7 +65,17 @@ class YnabClient
     }
 
     /**
-     * @param  list<array{id: string, amount: int, memo: string}>  $transactions
+     * Transactions of an account on or after $sinceDate (YYYY-MM-DD).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function transactionsSince(string $planId, string $accountId, string $sinceDate): array
+    {
+        return $this->get("/plans/{$planId}/accounts/{$accountId}/transactions", ['since_date' => $sinceDate])['transactions'];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $transactions  each with `id` plus the fields to change
      * @return array<string, mixed>
      */
     public function updateTransactions(string $planId, array $transactions): array
