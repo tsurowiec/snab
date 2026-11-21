@@ -33,6 +33,17 @@ it('skips rows it cannot parse', function () {
         ->and(ClaudeTransactionExtractor::parse([]))->toBe([]);
 });
 
+it('skips rows without an amount, like card verifications', function () {
+    $rows = ClaudeTransactionExtractor::parse(['transactions' => [
+        ['date' => '2026-11-19', 'time' => '13:21', 'merchant' => 'Amazon Prime', 'amount' => '-69', 'currency' => 'PLN', 'original_amount' => null, 'original_currency' => null, 'status' => 'completed'],
+        ['date' => '2026-11-19', 'time' => '13:20', 'merchant' => 'Amazon Prime', 'amount' => '0.00', 'currency' => 'PLN', 'original_amount' => null, 'original_currency' => null, 'status' => 'completed'],
+        ['date' => '2026-11-19', 'time' => '13:20', 'merchant' => 'Amazon Prime', 'amount' => '', 'currency' => 'PLN', 'original_amount' => null, 'original_currency' => null, 'status' => 'completed'],
+    ]]);
+
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0]->amount)->toBe(-69000);
+});
+
 it('drops the original amount when its currency is missing', function () {
     $rows = ClaudeTransactionExtractor::parse(['transactions' => [
         ['date' => '2026-11-15', 'time' => '14:32', 'merchant' => 'X', 'amount' => '-1', 'currency' => 'PLN', 'original_amount' => '-2', 'original_currency' => null, 'status' => 'completed'],

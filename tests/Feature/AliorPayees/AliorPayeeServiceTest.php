@@ -68,14 +68,24 @@ it('matches two equal purchases to two different transactions', function () {
     expect(array_column($preview, 'ynabId'))->toBe(['one', 'two']);
 });
 
-it('ignores deleted transactions, transfers and the unapproved half of a match', function () {
+it('ignores deleted transactions and the unapproved half of a match', function () {
     fakeApis(transactions: [
         ynabTx(['id' => 'deleted', 'date' => '2026-11-20', 'amount' => -100, 'deleted' => true]),
-        ynabTx(['id' => 'transfer', 'date' => '2026-11-20', 'amount' => -100, 'transfer_account_id' => 'acc-other']),
         ynabTx(['id' => 'matched', 'date' => '2026-11-20', 'amount' => -100, 'matched_transaction_id' => 'x', 'approved' => false]),
     ]);
 
     expect($this->service->preview($this->user, [aliorRow('2026-11-20', 'A', -100)])[0]['action'])->toBe('create');
+});
+
+it('matches transfers but never renames or re-adds them', function () {
+    fakeApis(transactions: [
+        ynabTx(['id' => 'transfer', 'date' => '2026-11-01', 'amount' => 2000000, 'payee_name' => 'Transfer : Revolut', 'transfer_account_id' => 'acc-revolut']),
+    ]);
+
+    $preview = $this->service->preview($this->user, [aliorRow('2026-11-01', 'Revolut Bank UAB', 2000000)]);
+
+    expect($preview[0]['action'])->toBe('ok')
+        ->and($preview[0]['ynabId'])->toBe('transfer');
 });
 
 it('patches only the payee and creates missing rows unapproved', function () {

@@ -64,6 +64,8 @@ class AliorPayeeService
                 'row' => $row,
                 'action' => match (true) {
                     $tx === null => self::ACTION_CREATE,
+                    // A transfer (e.g. from Revolut) is already in YNAB with the transfer payee: never rename or re-add it.
+                    ! empty($tx['transfer_account_id']) => self::ACTION_OK,
                     AliorRow::normalize($payee) === AliorRow::normalize($row->merchant) => self::ACTION_OK,
                     default => self::ACTION_RENAME,
                 },
@@ -194,14 +196,14 @@ class AliorPayeeService
     }
 
     /**
-     * Deleted rows, transfers and the unapproved half of a YNAB match can't be the bank's record of a purchase.
+     * Deleted rows and the unapproved half of a YNAB match can't be the bank's record of a transaction. Transfers can
+     * (they are matched so they aren't re-added) but preview() never renames them.
      *
      * @param  array<string, mixed>  $tx
      */
     private static function matchable(array $tx): bool
     {
         return empty($tx['deleted'])
-            && empty($tx['transfer_account_id'])
             && ! (! empty($tx['matched_transaction_id']) && empty($tx['approved']))
             && isset($tx['id'], $tx['amount'], $tx['date']);
     }

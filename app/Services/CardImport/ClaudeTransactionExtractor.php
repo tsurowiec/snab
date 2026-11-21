@@ -25,7 +25,8 @@ class ClaudeTransactionExtractor implements TransactionExtractor
 
         Layout: the list is grouped by day. Each group starts with a date header ("Today", "Yesterday", or a date such as
         "12 November" / "Nov 12", sometimes with a year). Under each header are rows; each row shows the merchant name,
-        the time (HH:MM) and the amount. Some rows also show a "Pending", "Declined" or "Reverted" label.
+        the time (HH:MM) and the amount. Some rows show a label after the time ("11:15 · Pending"), such as "Pending",
+        "Declined", "Reverted" or "Card verification".
 
         The card account is always in PLN: the main amount of every row is in PLN (zł). For purchases made in another
         currency the row additionally shows the original amount in that currency.
@@ -33,6 +34,7 @@ class ClaudeTransactionExtractor implements TransactionExtractor
         Rules:
         - Return every transaction row that is fully visible. Skip rows cut off at the top or bottom edge, and skip
           anything that is not a transaction (balances, buttons, section totals, ads).
+        - Skip rows that show no amount, such as "Card verification" checks: they never move money.
         - date: resolve the header of the row's group to YYYY-MM-DD using the "today" date given by the user.
           Headers without a year are in the most recent past occurrence of that day (never in the future).
           If a row is above the first visible header, use the header that would logically precede it only if it
@@ -109,6 +111,10 @@ class ClaudeTransactionExtractor implements TransactionExtractor
             // The card is billed in PLN: if the model put the PLN amount in the "original" slot, swap them back.
             if ($currency !== ExtractedTransaction::ACCOUNT_CURRENCY && $originalCurrency === ExtractedTransaction::ACCOUNT_CURRENCY && $originalAmount !== null) {
                 [$amount, $originalAmount, $currency, $originalCurrency] = [$originalAmount, $amount, $originalCurrency, $currency];
+            }
+            // Rows without an amount (e.g. "Card verification") come back as 0 when the model doesn't skip them.
+            if ($amount === 0) {
+                continue;
             }
             $status = in_array($row['status'] ?? null, ExtractedTransaction::STATUSES, true) ? $row['status'] : 'completed';
 

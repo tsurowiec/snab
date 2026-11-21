@@ -289,7 +289,7 @@ new #[Title('Alior payees')] class extends Component {
                             @elseif ($row['action'] === AliorPayeeService::ACTION_CREATE)
                                 <flux:badge size="sm" color="amber">{{ __('not in YNAB — add') }}</flux:badge>
                             @else
-                                <flux:badge size="sm" color="green">{{ __('OK') }}</flux:badge>
+                                <flux:badge size="sm" color="green">{{ AliorRow::normalize($row['ynabPayee']) === AliorRow::normalize($row['merchant']) ? __('OK') : __('OK: :payee', ['payee' => $row['ynabPayee'] ?? '—']) }}</flux:badge>
                             @endif
                             @if ($row['ynabDate'] !== null && $row['ynabDate'] !== $row['date'])
                                 <flux:badge size="sm" color="zinc">{{ __('YNAB date :date', ['date' => $row['ynabDate']]) }}</flux:badge>

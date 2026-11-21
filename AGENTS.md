@@ -30,6 +30,7 @@ composer test                 # pint --test + phpstan + tests (what CI should ru
 ./vendor/bin/phpstan analyse --memory-limit=1G  # static analysis
 npm run build                 # build assets (needed after JS/CSS changes when not running vite)
 php artisan snab:user you@example.com   # create a user / reset a password (no public registration)
+./pull-prod-db.sh             # replace the local DB with a production snapshot (local copy backed up first)
 ```
 
 Always run `composer test` (or at least `php artisan test` and phpstan) before finishing a change.
@@ -157,6 +158,7 @@ Livewire components resolve services with `app(...)` and catch `YnabException` t
   trimmed and has its whitespace collapsed. The hash is unique per `(user_id, hash)`. A duplicate in the review is
   shown as "already imported" and can't be selected.
 - Declined and reverted rows are shown in the review but not selected by default.
+- Rows without an amount (e.g. "Card verification") are skipped: the prompt says so, and `parse()` drops amount 0.
 - Screenshots are never stored; only the extracted rows are.
 - **YNAB export:**
   - **When:** Save stores the rows and then calls `YnabExporter::export()`, but only if the user has a YNAB token
@@ -173,7 +175,8 @@ Livewire components resolve services with `app(...)` and catch `YnabException` t
 - **Stateless**: no table. Every review is checked against live YNAB, so re-running is safe.
 - **Target account**: `Setting::ALIOR_YNAB_ACCOUNT`, chosen in Settings → YNAB. Transactions are fetched with
   `since_date` = earliest screenshot date − 3 days.
-- **Not matched against**: deleted transactions, transfers, and the unapproved half of a match.
+- **Not matched against**: deleted transactions and the unapproved half of a match. Transfers (e.g. from Revolut)
+  *are* matched, so they aren't re-added, but they are always `ok`, never renamed.
 - **Matching** is one-to-one, by **equal amount**:
   - pass 1 takes the exact date (preferring a transaction whose payee already matches);
   - pass 2 takes the closest date within ±3 days (`DATE_TOLERANCE_DAYS`), shown as "YNAB date …";
